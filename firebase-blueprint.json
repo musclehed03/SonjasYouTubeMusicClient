@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "UserSettings": {
+      "title": "User Settings",
+      "description": "Stores persistent user preferences and audio settings.",
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "object",
+          "properties": {
+            "primaryColor": { "type": "string" },
+            "secondaryColor": { "type": "string" },
+            "tertiaryColor": { "type": "string" },
+            "accentColor": { "type": "string" },
+            "fontFamily": { "type": "string" },
+            "visualizerOpacity": { "type": "number" }
+          }
+        },
+        "audio": {
+          "type": "object",
+          "properties": {
+            "eqPreset": { "type": "string" },
+            "customEq": { "type": "array", "items": { "type": "number" } },
+            "spatialAudio": { "type": "boolean" },
+            "dolbyAtmos": { "type": "boolean" },
+            "gaplessPlayback": { "type": "boolean" },
+            "blockExplicit": { "type": "boolean" }
+          }
+        },
+        "blockedSongs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of video IDs that the user never wants to hear again."
+        },
+        "likedSongs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of video IDs for liked music."
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}/settings/preferences": {
+      "schema": "UserSettings",
+      "description": "User-specific settings and preferences."
+    }
+  }
+}

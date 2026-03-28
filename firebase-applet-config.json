@@ -1,0 +1,10 @@
+{
+  "projectId": "ytm-premium-stream",
+  "appId": "1:1000520281190:web:0fc68d6dc7f8091eb7d1a7",
+  "apiKey": "AIzaSyAsu_nDxWgPgZmEVXAb5Lb4COeMoy-2aXw",
+  "authDomain": "ytm-premium-stream.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-db9de1da-d566-4857-bec0-f84450b2b82c",
+  "storageBucket": "ytm-premium-stream.firebasestorage.app",
+  "messagingSenderId": "1000520281190",
+  "measurementId": ""
+}
