@@ -13,11 +13,13 @@ const PORT = 3000;
 app.use(express.json());
 app.use(cookieParser());
 
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID || 'dummy_id',
-  process.env.GOOGLE_CLIENT_SECRET || 'dummy_secret',
-  `${process.env.APP_URL || 'http://localhost:3000'}/auth/callback`
-);
+const getOAuthClient = (redirectUri?: string) => {
+  return new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID || 'dummy_id',
+    process.env.GOOGLE_CLIENT_SECRET || 'dummy_secret',
+    redirectUri || `${process.env.APP_URL || 'http://localhost:3000'}/auth/callback`
+  );
+};
 
 const SCOPES = [
   'https://www.googleapis.com/auth/youtube.readonly',
@@ -31,16 +33,24 @@ app.get('/api/health', (req, res) => {
 
 // Auth Routes
 app.get('/api/auth/url', (req, res) => {
+  const origin = req.query.origin as string || process.env.APP_URL || 'http://localhost:3000';
+  const redirectUri = `${origin}/auth/callback`;
+  const oauth2Client = getOAuthClient(redirectUri);
+
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
-    prompt: 'consent'
+    prompt: 'consent',
+    state: origin // Pass the origin back in the state parameter
   });
   res.json({ url });
 });
 
 app.get('/auth/callback', async (req, res) => {
-  const { code } = req.query;
+  const { code, state: origin } = req.query;
+  const redirectUri = `${origin as string || process.env.APP_URL || 'http://localhost:3000'}/auth/callback`;
+  const oauth2Client = getOAuthClient(redirectUri);
+
   try {
     const { tokens } = await oauth2Client.getToken(code as string);
     oauth2Client.setCredentials(tokens);
@@ -112,6 +122,7 @@ app.get('/api/youtube/playlists', async (req, res) => {
 
   try {
     const tokens = JSON.parse(tokensStr);
+    const oauth2Client = getOAuthClient();
     oauth2Client.setCredentials(tokens);
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
 
@@ -135,6 +146,7 @@ app.get('/api/youtube/playlist-items/:playlistId', async (req, res) => {
 
   try {
     const tokens = JSON.parse(tokensStr);
+    const oauth2Client = getOAuthClient();
     oauth2Client.setCredentials(tokens);
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
 

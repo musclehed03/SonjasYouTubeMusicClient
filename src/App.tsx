@@ -451,7 +451,7 @@ export default function App() {
 
   const handleConnect = async () => {
     try {
-      const res = await fetch('/api/auth/url');
+      const res = await fetch(`/api/auth/url?origin=${encodeURIComponent(window.location.origin)}`);
       const { url } = await res.json();
       window.open(url, 'youtube_auth', 'width=600,height=700');
     } catch (err) {
