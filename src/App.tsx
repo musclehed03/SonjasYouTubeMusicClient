@@ -10,9 +10,9 @@ import {
   Search, List, Settings, Grid, Layout, Volume2, Activity,
   Maximize2, MoreVertical, Plus, FolderPlus, SortAsc,
   Heart, Share2, Download, Cast, RotateCcw, RotateCw,
-  ChevronDown, Volume1, VolumeX, MoreHorizontal, Calendar, Music
+  ChevronDown, Volume1, VolumeX, MoreHorizontal, Calendar, Music, ListMusic
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Song, Playlist, ThemeConfig, AppSettings } from './types';
 import { cn } from './utils';
 import { Visualizer } from './components/Visualizer';
@@ -225,6 +225,7 @@ export default function App() {
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [isVisualizerMenuOpen, setIsVisualizerMenuOpen] = useState(false);
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>(MOCK_PLAYLISTS[0]);
   const [multiSelect, setMultiSelect] = useState<string[]>([]);
@@ -236,6 +237,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [queue, setQueue] = useState<Song[]>(MOCK_SONGS);
   const [shuffledQueue, setShuffledQueue] = useState<Song[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>({
     losslessAudio: true,
@@ -326,7 +328,14 @@ export default function App() {
 
   useEffect(() => {
     if (isShuffle) {
-      shuffleQueue(selectedPlaylist.songs);
+      const shuffled = [...selectedPlaylist.songs];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      setQueue(shuffled);
+    } else {
+      setQueue(selectedPlaylist.songs);
     }
   }, [isShuffle, selectedPlaylist]);
 
@@ -423,6 +432,7 @@ export default function App() {
     };
     
     setSelectedPlaylist(mixPlaylist);
+    setQueue(allSongs);
     setCurrentSong(allSongs[0]);
     setIsPlaying(true);
     setIsShuffle(true);
@@ -598,33 +608,35 @@ export default function App() {
   };
 
   const handleNext = () => {
-    const queue = isShuffle ? shuffledQueue : selectedPlaylist.songs;
-    const currentIndex = queue.findIndex(s => s.id === currentSong.id);
-    let nextIndex = (currentIndex + 1) % queue.length;
+    const activeQueue = queue;
+    if (activeQueue.length === 0) return;
+    const currentIndex = activeQueue.findIndex(s => s.id === currentSong.id);
+    let nextIndex = (currentIndex + 1) % activeQueue.length;
     
     // Skip blocked songs
-    while (isSongBlocked(queue[nextIndex].id) && nextIndex !== currentIndex) {
-      nextIndex = (nextIndex + 1) % queue.length;
+    while (isSongBlocked(activeQueue[nextIndex].id) && nextIndex !== currentIndex) {
+      nextIndex = (nextIndex + 1) % activeQueue.length;
     }
     
     if (nextIndex === 0 && repeatMode === 'none') {
       setIsPlaying(false);
     } else {
-      setCurrentSong(queue[nextIndex]);
+      setCurrentSong(activeQueue[nextIndex]);
     }
   };
 
   const handlePrevious = () => {
-    const queue = isShuffle ? shuffledQueue : selectedPlaylist.songs;
-    const currentIndex = queue.findIndex(s => s.id === currentSong.id);
-    let prevIndex = (currentIndex - 1 + queue.length) % queue.length;
+    const activeQueue = queue;
+    if (activeQueue.length === 0) return;
+    const currentIndex = activeQueue.findIndex(s => s.id === currentSong.id);
+    let prevIndex = (currentIndex - 1 + activeQueue.length) % activeQueue.length;
     
     // Skip blocked songs
-    while (isSongBlocked(queue[prevIndex].id) && prevIndex !== currentIndex) {
-      prevIndex = (prevIndex - 1 + queue.length) % queue.length;
+    while (isSongBlocked(activeQueue[prevIndex].id) && prevIndex !== currentIndex) {
+      prevIndex = (prevIndex - 1 + activeQueue.length) % activeQueue.length;
     }
     
-    setCurrentSong(queue[prevIndex]);
+    setCurrentSong(activeQueue[prevIndex]);
   };
 
   const parsedLyrics = useMemo(() => {
@@ -754,6 +766,20 @@ export default function App() {
                 <span className="text-[7px] bg-tertiary/20 text-tertiary px-1 rounded uppercase font-black">New</span>
               </span>
             )}
+          </button>
+          <button 
+            onClick={() => {
+              setIsQueueOpen(true);
+              setShowSettings(false);
+              setIsNowPlayingOpen(false);
+            }}
+            className={cn(
+              "flex items-center gap-2.5 p-1 rounded-md transition-all text-[10px] w-full", 
+              isQueueOpen ? "bg-tertiary/20 text-tertiary font-bold" : "text-zinc-300 hover:text-white hover:bg-white/5",
+              isSidebarCollapsed && "justify-center px-0"
+            )}
+          >
+            <ListMusic className="w-3.5 h-3.5" /> {!isSidebarCollapsed && "Queue"}
           </button>
           <div className="relative">
             <button 
@@ -1077,7 +1103,95 @@ export default function App() {
               <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           )}
-          
+
+          {isQueueOpen ? (
+            <div className="flex flex-col h-full">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h1 className="text-2xl md:text-4xl font-black tracking-tighter leading-tight">Now Playing Queue</h1>
+                  <p className="text-zinc-400 text-[10px] mt-1 uppercase tracking-widest font-bold">Manage your active playback session</p>
+                </div>
+                <button 
+                  onClick={() => setIsQueueOpen(false)}
+                  className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[10px] font-bold transition-all"
+                >
+                  Back to Library
+                </button>
+              </div>
+
+              <div className="flex-1">
+                <Reorder.Group axis="y" values={queue} onReorder={setQueue} className="space-y-1">
+                  {queue.map((song) => (
+                    <Reorder.Item 
+                      key={song.id} 
+                      value={song}
+                      className={cn(
+                        "group flex items-center gap-3 p-2 rounded-xl transition-all cursor-grab active:cursor-grabbing",
+                        currentSong.id === song.id ? "bg-tertiary/10 border border-tertiary/20" : "hover:bg-white/5 border border-transparent"
+                      )}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">
+                          <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover" />
+                          {currentSong.id === song.id && isPlaying && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                              <div className="flex gap-0.5 items-end h-3">
+                                <motion.div animate={{ height: [4, 12, 4] }} transition={{ repeat: Infinity, duration: 0.6 }} className="w-0.5 bg-tertiary" />
+                                <motion.div animate={{ height: [8, 4, 8] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-0.5 bg-tertiary" />
+                                <motion.div animate={{ height: [6, 10, 6] }} transition={{ repeat: Infinity, duration: 0.7 }} className="w-0.5 bg-tertiary" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className={cn("text-[11px] font-bold truncate", currentSong.id === song.id ? "text-tertiary" : "text-white")}>{song.title}</h3>
+                          <p className="text-[10px] text-zinc-500 truncate">{song.artist}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => {
+                            setCurrentSong(song);
+                            setIsPlaying(true);
+                          }}
+                          className="p-1.5 rounded-lg bg-zinc-800 hover:bg-tertiary/20 hover:text-tertiary transition-all"
+                        >
+                          <Play className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setQueue(queue.filter(s => s.id !== song.id));
+                          }}
+                          className="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-500/20 hover:text-red-500 transition-all"
+                        >
+                          <Plus className="w-3.5 h-3.5 rotate-45" />
+                        </button>
+                      </div>
+                      
+                      <div className="text-zinc-600 group-hover:text-zinc-400 transition-colors px-2">
+                        <List className="w-4 h-4" />
+                      </div>
+                    </Reorder.Item>
+                  ))}
+                </Reorder.Group>
+                
+                {queue.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
+                    <ListMusic className="w-12 h-12 mb-4 opacity-20" />
+                    <p className="text-sm font-medium">Your queue is empty</p>
+                    <button 
+                      onClick={() => setIsQueueOpen(false)}
+                      className="mt-4 text-[10px] text-tertiary hover:underline"
+                    >
+                      Add some songs from your library
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="w-28 h-28 md:w-32 md:h-32 mx-auto md:mx-0 rounded-2xl overflow-hidden shadow-xl relative group border border-white/10">
               <img src={currentSong.thumbnail} alt={currentSong.album} className="w-full h-full object-cover" />
@@ -1102,6 +1216,7 @@ export default function App() {
                     if (selectedPlaylist.songs.length > 0) {
                       setCurrentSong(selectedPlaylist.songs[0]);
                       setIsPlaying(true);
+                      setQueue(selectedPlaylist.songs);
                     }
                   }}
                   className="px-4 py-1.5 rounded-lg pink-gradient-bg text-[10px] font-bold hover:opacity-90 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-primary/20"
@@ -1130,6 +1245,7 @@ export default function App() {
                   onClick={() => {
                     setCurrentSong(song);
                     setIsPlaying(true);
+                    setQueue(MOCK_SONGS);
                   }}
                 >
                   <div className="relative aspect-square rounded-2xl overflow-hidden mb-2 border border-white/5 shadow-lg">
@@ -1246,6 +1362,7 @@ export default function App() {
                     console.log('Playing song:', song.title, song.videoUrl);
                     setCurrentSong(song);
                     setIsPlaying(true);
+                    setQueue(filteredSongs);
                   }
                 }}
                 className={cn(
@@ -1278,6 +1395,13 @@ export default function App() {
                       <Heart className={cn("w-3 h-3", isSongLiked(song.id) && "fill-primary")} />
                     </button>
                     <button 
+                      onClick={(e) => { e.stopPropagation(); setQueue(prev => [...prev, song]); }}
+                      className="p-0.5 hover:text-tertiary transition-colors"
+                      title="Add to Queue"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                    <button 
                       onClick={(e) => { e.stopPropagation(); blockSong(song.id); }}
                       className="p-0.5 hover:text-red-500 transition-colors"
                     >
@@ -1289,6 +1413,8 @@ export default function App() {
               </motion.div>
             ))}
           </div>
+          </>
+          )}
         </main>
 
         {/* Video Player Overlay */}
@@ -1745,8 +1871,16 @@ export default function App() {
                       <motion.div whileHover={{ scale: 1.5 }} whileTap={{ scale: 0.9 }} initial={{ scale: 0.9 }}>
                         <Download className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
                       </motion.div>
-                      <motion.div whileHover={{ scale: 1.5 }} whileTap={{ scale: 0.9 }} initial={{ scale: 0.9 }}>
-                        <List className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
+                      <motion.div 
+                        whileHover={{ scale: 1.5 }} 
+                        whileTap={{ scale: 0.9 }} 
+                        initial={{ scale: 0.9 }}
+                        onClick={() => {
+                          setIsQueueOpen(true);
+                          setIsNowPlayingOpen(false);
+                        }}
+                      >
+                        <ListMusic className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
                       </motion.div>
                       <motion.div whileHover={{ scale: 1.5 }} whileTap={{ scale: 0.9 }} initial={{ scale: 0.9 }}>
                         <MoreHorizontal className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
