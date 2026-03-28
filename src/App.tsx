@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import ReactPlayer from 'react-player';
+import { Toaster, toast } from 'sonner';
 import { 
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, 
   Search, List, Settings, Grid, Layout, Volume2, Activity,
@@ -196,26 +197,6 @@ export default function App() {
   const [repeatMode, setRepeatMode] = useState<'none' | 'one' | 'all'>('none');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'title' | 'artist' | 'album' | 'date' | 'genre'>('title');
-  const [theme, setTheme] = useState<ThemeConfig>({
-    primaryColor: '#ff007f',
-    secondaryColor: '#ff80bf',
-    tertiaryColor: '#ff00ff',
-    accentColor: '#1a1a1a',
-    textColor: '#ffffff',
-    fontFamily: 'Inter',
-    fontSize: 14,
-    visualizerOpacity: 0.5,
-    visualizerType: 'bars',
-    visualizerColor: '#ff00ff',
-    dynamicTheme: true,
-    lyricsOpacity: 0.8,
-    lyricsFontSize: 24,
-    lyricsFontFamily: 'Inter',
-    lyricsColor: '#ffffff',
-    lyricsAlignment: 'center',
-    visualizerNowPlaying: true,
-    visualizerNowPlayingOpacity: 0.3
-  });
   const [showSettings, setShowSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -236,17 +217,13 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [preferences, setPreferences] = useState<UserPreferences>(() => {
+    const saved = localStorage.getItem('ytm_preferences');
+    return saved ? JSON.parse(saved) : DEFAULT_PREFERENCES;
+  });
+  const [theme, setTheme] = useState<ThemeConfig>(preferences.theme);
   const [queue, setQueue] = useState<Song[]>(MOCK_SONGS);
   const [shuffledQueue, setShuffledQueue] = useState<Song[]>([]);
-  const [appSettings, setAppSettings] = useState<AppSettings>({
-    losslessAudio: true,
-    crossfadeDuration: 12,
-    volumeNormalization: true,
-    artistBlocking: false,
-    autoplay: true,
-    seekTime: 10
-  });
 
   const playerRef = useRef<any>(null);
   const [isReady, setIsReady] = useState(false);
@@ -307,13 +284,80 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Update Firestore when local preferences change
-  const updatePreferences = (newPrefs: Partial<UserPreferences>) => {
-    if (user) {
-      const updated = { ...preferences, ...newPrefs };
-      setPreferences(updated);
-      saveUserPreferences(user.uid, updated);
+  // Update Firestore and LocalStorage when local preferences change
+  const updatePreferences = async (newPrefs: Partial<UserPreferences>) => {
+    const updated = { ...preferences, ...newPrefs };
+    
+    // Update local state immediately for responsiveness
+    setPreferences(updated);
+    if (newPrefs.theme) {
+      setTheme(updated.theme);
     }
+    
+    // Persist to localStorage
+    localStorage.setItem('ytm_preferences', JSON.stringify(updated));
+
+    // Persist to Firestore if logged in
+    if (user) {
+      try {
+        await saveUserPreferences(user.uid, updated);
+      } catch (err) {
+        console.error("Failed to save preferences to Firestore:", err);
+      }
+    }
+  };
+
+  const handleShare = (song: Song) => {
+    const url = `https://music.youtube.com/watch?v=${song.id}`;
+    navigator.clipboard.writeText(url);
+    toast.success('Link copied to clipboard!', {
+      description: `${song.title} by ${song.artist}`,
+      icon: <Share2 className="w-4 h-4 text-tertiary" />,
+    });
+  };
+
+  const handleDownload = (song: Song) => {
+    toast.info('Download started...', {
+      description: `${song.title} is being prepared for offline playback.`,
+      icon: <Download className="w-4 h-4 text-primary" />,
+    });
+    // Simulate download
+    setTimeout(() => {
+      toast.success('Download complete!', {
+        description: `${song.title} is now available offline.`
+      });
+    }, 2000);
+  };
+
+  const handleCast = () => {
+    toast.info('Searching for devices...', {
+      description: 'Make sure your Chromecast or smart TV is on the same Wi-Fi network.',
+      icon: <Cast className="w-4 h-4 text-tertiary" />,
+    });
+  };
+
+  const handleHome = () => {
+    setIsQueueOpen(false);
+    setShowSettings(false);
+    setIsNowPlayingOpen(false);
+    toast('Welcome Home', {
+      description: 'Back to your personalized music hub.',
+      icon: <Grid className="w-4 h-4 text-tertiary" />,
+    });
+  };
+
+  const handleExplore = () => {
+    toast('Explore New Music', {
+      description: 'Discover trending tracks and new releases.',
+      icon: <Search className="w-4 h-4 text-tertiary" />,
+    });
+  };
+
+  const handleSongs = () => {
+    toast('Your Songs', {
+      description: 'Viewing all tracks in your library.',
+      icon: <Music2 className="w-4 h-4 text-tertiary" />,
+    });
   };
 
   // Fisher-Yates Shuffle
@@ -689,6 +733,7 @@ export default function App() {
       )}
 
       {/* Sidebar */}
+      <Toaster position="top-center" richColors theme={preferences.theme.visualizerType === 'nebula' ? 'dark' : 'light'} />
       <AnimatePresence mode="wait">
         {isSidebarOpen && (
           <motion.div 
@@ -746,13 +791,22 @@ export default function App() {
 
         <nav className="flex flex-col gap-0.5">
           {!isSidebarCollapsed && <div className="text-[7px] uppercase tracking-[0.2em] text-zinc-500 font-bold mb-0.5 px-2">Library</div>}
-          <button className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px]", isSidebarCollapsed && "justify-center px-0")}>
+          <button 
+            onClick={handleHome}
+            className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px]", isSidebarCollapsed && "justify-center px-0")}
+          >
             <Grid className="w-3.5 h-3.5 text-tertiary" /> {!isSidebarCollapsed && "Home"}
           </button>
-          <button className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px]", isSidebarCollapsed && "justify-center px-0")}>
+          <button 
+            onClick={handleExplore}
+            className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px]", isSidebarCollapsed && "justify-center px-0")}
+          >
             <Search className="w-3.5 h-3.5 text-tertiary" /> {!isSidebarCollapsed && "Explore"}
           </button>
-          <button className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px]", isSidebarCollapsed && "justify-center px-0")}>
+          <button 
+            onClick={handleSongs}
+            className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px]", isSidebarCollapsed && "justify-center px-0")}
+          >
             <Music2 className="w-3.5 h-3.5 text-tertiary" /> {!isSidebarCollapsed && "Songs"}
           </button>
           <button 
@@ -1091,7 +1145,12 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
-            <button className="p-1 hover:bg-white/10 rounded-full transition-colors text-tertiary hover:text-white"><Cast className="w-3 h-3" /></button>
+            <button 
+              onClick={handleCast}
+              className="p-1 hover:bg-white/10 rounded-full transition-colors text-tertiary hover:text-white"
+            >
+              <Cast className="w-3 h-3" />
+            </button>
             <div className="w-5 h-5 md:w-6 md:h-6 rounded-full bg-gradient-to-br from-primary via-secondary to-tertiary border border-white/10 shadow-lg" />
           </div>
         </header>
@@ -1223,8 +1282,18 @@ export default function App() {
                 >
                   Play All
                 </button>
-                <button className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-all hover:scale-105"><Heart className="w-3.5 h-3.5" /></button>
-                <button className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-all hover:scale-105"><Share2 className="w-3.5 h-3.5" /></button>
+                <button 
+                  onClick={() => toggleLikeSong(selectedPlaylist.songs[0]?.id)}
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-all hover:scale-105"
+                >
+                  <Heart className={cn("w-3.5 h-3.5", selectedPlaylist.songs[0] && isSongLiked(selectedPlaylist.songs[0].id) && "fill-primary text-primary")} />
+                </button>
+                <button 
+                  onClick={() => selectedPlaylist.songs[0] && handleShare(selectedPlaylist.songs[0])}
+                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-all hover:scale-105"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           </div>
@@ -1428,11 +1497,11 @@ export default function App() {
               {...({
                 ref: playerRef,
                 url: currentSong.videoUrl,
-                playing: isPlaying && isReady && canPlay,
+                playing: isPlaying,
                 volume: volume,
                 onEnded: handleEnded,
                 onProgress: handleProgress,
-                // onDuration removed to fix React 19 warning
+                onError: (e: any) => console.error('ReactPlayer Error:', e),
                 onReady: () => {
                   setIsReady(true);
                   if (playerRef.current) {
@@ -1448,24 +1517,16 @@ export default function App() {
                   }
                   console.log('Player Playing');
                 },
-                onPause: () => console.log('Player Paused'),
-                onError: (e: any) => {
-                  console.error('Player Error:', e);
-                  setIsReady(false);
-                  setCanPlay(false);
+                config: {
+                  youtube: {
+                    origin: typeof window !== 'undefined' ? window.location.origin : '',
+                    rel: 0,
+                    fs: 1
+                  }
                 },
                 width: "100%",
                 height: "100%",
-                config: {
-                  youtube: {
-                    playerVars: { 
-                      autoplay: 1,
-                      modestbranding: 1,
-                      rel: 0,
-                      playsinline: 1
-                    }
-                  }
-                }
+                style: { position: 'absolute', top: 0, left: 0 }
               } as any)}
             />
           </div>
@@ -1862,13 +1923,28 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center gap-4 md:gap-8">
-                      <motion.div whileHover={{ scale: 1.5 }} whileTap={{ scale: 0.9 }} initial={{ scale: 0.9 }}>
+                      <motion.div 
+                        whileHover={{ scale: 1.5 }} 
+                        whileTap={{ scale: 0.9 }} 
+                        initial={{ scale: 0.9 }}
+                        onClick={() => handleShare(currentSong)}
+                      >
                         <Share2 className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
                       </motion.div>
-                      <motion.div whileHover={{ scale: 1.5 }} whileTap={{ scale: 0.9 }} initial={{ scale: 0.9 }}>
+                      <motion.div 
+                        whileHover={{ scale: 1.5 }} 
+                        whileTap={{ scale: 0.9 }} 
+                        initial={{ scale: 0.9 }}
+                        onClick={handleCast}
+                      >
                         <Cast className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
                       </motion.div>
-                      <motion.div whileHover={{ scale: 1.5 }} whileTap={{ scale: 0.9 }} initial={{ scale: 0.9 }}>
+                      <motion.div 
+                        whileHover={{ scale: 1.5 }} 
+                        whileTap={{ scale: 0.9 }} 
+                        initial={{ scale: 0.9 }}
+                        onClick={() => handleDownload(currentSong)}
+                      >
                         <Download className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
                       </motion.div>
                       <motion.div 
@@ -2335,27 +2411,40 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold">Lossless Audio</span>
                     <button 
-                      onClick={() => setAppSettings(prev => ({ ...prev, losslessAudio: !prev.losslessAudio }))}
-                      className={cn("w-8 h-4 rounded-full transition-colors relative", appSettings.losslessAudio ? "bg-primary" : "bg-zinc-700")}
+                      onClick={() => updatePreferences({ appSettings: { ...preferences.appSettings, losslessAudio: !preferences.appSettings.losslessAudio } })}
+                      className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.appSettings.losslessAudio ? "bg-primary" : "bg-zinc-700")}
                     >
-                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", appSettings.losslessAudio ? "left-4.5" : "left-0.5")} />
+                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.appSettings.losslessAudio ? "left-4.5" : "left-0.5")} />
                     </button>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold">Volume Normalization</span>
                     <button 
-                      onClick={() => setAppSettings(prev => ({ ...prev, volumeNormalization: !prev.volumeNormalization }))}
-                      className={cn("w-8 h-4 rounded-full transition-colors relative", appSettings.volumeNormalization ? "bg-primary" : "bg-zinc-700")}
+                      onClick={() => updatePreferences({ appSettings: { ...preferences.appSettings, volumeNormalization: !preferences.appSettings.volumeNormalization } })}
+                      className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.appSettings.volumeNormalization ? "bg-primary" : "bg-zinc-700")}
                     >
-                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", appSettings.volumeNormalization ? "left-4.5" : "left-0.5")} />
+                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.appSettings.volumeNormalization ? "left-4.5" : "left-0.5")} />
                     </button>
                   </div>
                 </div>
               </section>
 
-              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 text-center">
-                <p className="text-[10px] text-zinc-400 mb-1">YTMStream Control v2.4.0</p>
-                <p className="text-[9px] text-zinc-500 italic">Optimized for high-density displays</p>
+              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 text-center space-y-3">
+                <button 
+                  onClick={() => {
+                    updatePreferences(DEFAULT_PREFERENCES);
+                    toast.success('Settings reset to default', {
+                      description: 'All preferences have been restored to their original values.'
+                    });
+                  }}
+                  className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-[10px] font-bold transition-all border border-white/5"
+                >
+                  Reset to Default
+                </button>
+                <div>
+                  <p className="text-[10px] text-zinc-400 mb-1">YTMStream Control v2.4.0</p>
+                  <p className="text-[9px] text-zinc-500 italic">Optimized for high-density displays</p>
+                </div>
               </div>
             </div>
           </motion.div>

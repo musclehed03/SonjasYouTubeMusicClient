@@ -41,6 +41,14 @@ export interface UserPreferences {
     autoplay: boolean;
     seekTime: number;
   };
+  appSettings: {
+    losslessAudio: boolean;
+    crossfadeDuration: number;
+    volumeNormalization: boolean;
+    artistBlocking: boolean;
+    autoplay: boolean;
+    seekTime: number;
+  };
   blockedSongs: string[];
   likedSongs: string[];
 }
@@ -75,6 +83,14 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     dolbyAtmos: false,
     gaplessPlayback: true,
     blockExplicit: false,
+    autoplay: true,
+    seekTime: 10
+  },
+  appSettings: {
+    losslessAudio: true,
+    crossfadeDuration: 12,
+    volumeNormalization: true,
+    artistBlocking: false,
     autoplay: true,
     seekTime: 10
   },

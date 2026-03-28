@@ -12,8 +12,20 @@
             "secondaryColor": { "type": "string" },
             "tertiaryColor": { "type": "string" },
             "accentColor": { "type": "string" },
+            "textColor": { "type": "string" },
             "fontFamily": { "type": "string" },
-            "visualizerOpacity": { "type": "number" }
+            "fontSize": { "type": "number" },
+            "visualizerOpacity": { "type": "number" },
+            "visualizerType": { "type": "string" },
+            "visualizerColor": { "type": "string" },
+            "dynamicTheme": { "type": "boolean" },
+            "lyricsOpacity": { "type": "number" },
+            "lyricsFontSize": { "type": "number" },
+            "lyricsFontFamily": { "type": "string" },
+            "lyricsColor": { "type": "string" },
+            "lyricsAlignment": { "type": "string" },
+            "visualizerNowPlaying": { "type": "boolean" },
+            "visualizerNowPlayingOpacity": { "type": "number" }
           }
         },
         "audio": {
@@ -24,18 +36,28 @@
             "spatialAudio": { "type": "boolean" },
             "dolbyAtmos": { "type": "boolean" },
             "gaplessPlayback": { "type": "boolean" },
-            "blockExplicit": { "type": "boolean" }
+            "blockExplicit": { "type": "boolean" },
+            "seekTime": { "type": "number" }
+          }
+        },
+        "appSettings": {
+          "type": "object",
+          "properties": {
+            "losslessAudio": { "type": "boolean" },
+            "crossfadeDuration": { "type": "number" },
+            "volumeNormalization": { "type": "boolean" },
+            "artistBlocking": { "type": "boolean" },
+            "autoplay": { "type": "boolean" },
+            "seekTime": { "type": "number" }
           }
         },
         "blockedSongs": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "List of video IDs that the user never wants to hear again."
+          "items": { "type": "string" }
         },
         "likedSongs": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "List of video IDs for liked music."
+          "items": { "type": "string" }
         }
       }
     }
