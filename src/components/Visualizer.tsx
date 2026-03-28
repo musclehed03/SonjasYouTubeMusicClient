@@ -20,12 +20,21 @@ export const Visualizer: React.FC<VisualizerProps> = ({ audioElement, opacity, t
     const resize = () => {
       const parent = canvas.parentElement;
       if (parent) {
-        canvas.width = parent.clientWidth;
-        canvas.height = parent.clientHeight;
+        const rect = parent.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
       }
     };
 
     resize();
+    const resizeObserver = new ResizeObserver(() => {
+      resize();
+    });
+    
+    if (canvas.parentElement) {
+      resizeObserver.observe(canvas.parentElement);
+    }
+
     window.addEventListener('resize', resize);
 
     let animationId: number;
@@ -147,6 +156,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({ audioElement, opacity, t
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
+      resizeObserver.disconnect();
     };
   }, [audioElement, opacity, type, color]);
 

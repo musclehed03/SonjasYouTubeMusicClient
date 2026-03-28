@@ -7,20 +7,35 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import ReactPlayer from 'react-player';
 import { Toaster, toast } from 'sonner';
 import { 
-  Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, 
+  Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
   Search, List, Settings, Grid, Layout, Volume2, Activity,
   Maximize2, MoreVertical, Plus, FolderPlus, SortAsc,
   Heart, Share2, Download, Cast, RotateCcw, RotateCw,
-  ChevronDown, Volume1, VolumeX, MoreHorizontal, Calendar, Music, ListMusic
+  ChevronDown, ChevronLeft, ChevronRight, Volume1, VolumeX, MoreHorizontal, Calendar, Music, ListMusic,
+  Video, Mic2, ListVideo, Layers, Minimize2, ExternalLink,
+  AlignLeft, AlignCenter, AlignRight, Trash2, Edit2, Check, X,
+  Headphones, Sliders, Zap, Shield, ShieldOff, SortDesc,
+  Youtube, LogOut, User, Music2, Disc3, Ban, Accessibility, Globe, ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { Song, Playlist, ThemeConfig, AppSettings } from './types';
 import { cn } from './utils';
 import { Visualizer } from './components/Visualizer';
-import { Youtube, LogOut, User, Music2, Disc3, Ban, Headphones, Sliders, Zap, Shield, ShieldOff, SortDesc } from 'lucide-react';
-import { auth, db, UserPreferences, DEFAULT_PREFERENCES, saveUserPreferences } from './firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { auth, db, UserPreferences, DEFAULT_PREFERENCES, saveUserPreferences, CustomEqProfile } from './firebase';
+import { onAuthStateChanged, User as FirebaseUser, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { onSnapshot, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, updateDoc } from 'firebase/firestore';
+
+const EQ_PRESETS: Record<string, number[]> = {
+  'Flat': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  'Bass Boost': [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
+  'Electronic': [4, 3, 1, 0, 2, 3, 4, 5, 4, 3],
+  'Rock': [4, 3, 2, 1, -1, -1, 0, 1, 2, 3],
+  'Pop': [-1, 0, 1, 2, 2, 1, 0, -1, -1, -1],
+  'Classical': [4, 3, 2, 1, 0, 0, 1, 2, 3, 4],
+  'Jazz': [3, 2, 1, 2, -1, -1, 0, 1, 2, 3],
+};
+
+const FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
 const MOCK_SONGS: Song[] = [
   {
@@ -187,6 +202,138 @@ const MOCK_PLAYLISTS: Playlist[] = [
   { id: 'p3', name: 'Chill Vibes', songs: [MOCK_SONGS[0], MOCK_SONGS[2]], folder: 'Relax' }
 ];
 
+const translations: Record<string, Record<string, string>> = {
+  English: {
+    home: "Home",
+    settings: "Settings",
+    appearance: "Appearance",
+    audio: "Audio & Playback",
+    accessibility: "Accessibility",
+    language: "Language",
+    explicitContent: "Explicit Content",
+    yourLibrary: "Your Library",
+    ytPlaylists: "YouTube Playlists",
+    nowPlaying: "Now Playing Customization",
+    visualizer: "Visualizer Customization",
+    colorBlind: "Color Blind Mode",
+    screenReader: "Screen Reader",
+    highContrast: "High Contrast",
+    hearingCalibration: "Hearing Calibration",
+    createStation: "Create Station",
+    pickArtists: "Pick Artists & Songs",
+    startMix: "Start Mix",
+    cast: "Cast to Device",
+    availableDevices: "Available Devices",
+    connecting: "Connecting...",
+    connected: "Connected",
+    disconnect: "Disconnect",
+    none: "None",
+    protanopia: "Protanopia",
+    deuteranopia: "Deuteranopia",
+    tritanopia: "Tritanopia",
+    achromatopsia: "Achromatopsia",
+    left: "Left",
+    center: "Center",
+    right: "Right",
+    bars: "Bars",
+    wave: "Wave",
+    circle: "Circle",
+    particles: "Particles",
+    spectrum: "Spectrum",
+    rings: "Rings",
+    glitch: "Glitch",
+    nebula: "Nebula",
+    fireworks: "Fireworks",
+    matrix: "Matrix"
+  },
+  Spanish: {
+    home: "Inicio",
+    settings: "Ajustes",
+    appearance: "Apariencia",
+    audio: "Audio y Reproducción",
+    accessibility: "Accesibilidad",
+    language: "Idioma",
+    explicitContent: "Contenido Explícito",
+    yourLibrary: "Tu Biblioteca",
+    ytPlaylists: "Listas de YouTube",
+    nowPlaying: "Personalización de Reproducción",
+    visualizer: "Personalización del Visualizador",
+    colorBlind: "Modo para Daltónicos",
+    screenReader: "Lector de Pantalla",
+    highContrast: "Alto Contraste",
+    hearingCalibration: "Calibración de Audición",
+    createStation: "Crear Estación",
+    pickArtists: "Elegir Artistas y Canciones",
+    startMix: "Iniciar Mezcla",
+    cast: "Transmitir a Dispositivo",
+    availableDevices: "Dispositivos Disponibles",
+    connecting: "Conectando...",
+    connected: "Conectado",
+    disconnect: "Desconectar",
+    none: "Ninguno",
+    protanopia: "Protanopia",
+    deuteranopia: "Deuteranopia",
+    tritanopia: "Tritanopia",
+    achromatopsia: "Acromatopsia",
+    left: "Izquierda",
+    center: "Centro",
+    right: "Derecha",
+    bars: "Barras",
+    wave: "Onda",
+    circle: "Círculo",
+    particles: "Partículas",
+    spectrum: "Espectro",
+    rings: "Anillos",
+    glitch: "Glitch",
+    nebula: "Nebulosa",
+    fireworks: "Fuegos Artificiales",
+    matrix: "Matriz"
+  },
+  French: {
+    home: "Accueil",
+    settings: "Paramètres",
+    appearance: "Apparence",
+    audio: "Audio et Lecture",
+    accessibility: "Accessibilité",
+    language: "Langue",
+    explicitContent: "Contenu Explicite",
+    yourLibrary: "Votre Bibliothèque",
+    ytPlaylists: "Playlists YouTube",
+    nowPlaying: "Personnalisation de la Lecture",
+    visualizer: "Personnalisation du Visualiseur",
+    colorBlind: "Mode Daltonien",
+    screenReader: "Lecteur d'Écran",
+    highContrast: "Contraste Élevé",
+    hearingCalibration: "Calibration de l'Audition",
+    createStation: "Créer une Station",
+    pickArtists: "Choisir Artistes et Chansons",
+    startMix: "Démarrer le Mix",
+    cast: "Diffuser sur l'Appareil",
+    availableDevices: "Appareils Disponibles",
+    connecting: "Connexion...",
+    connected: "Connecté",
+    disconnect: "Déconnecter",
+    none: "Aucun",
+    protanopia: "Protanopie",
+    deuteranopia: "Deutéranopie",
+    tritanopia: "Tritanopie",
+    achromatopsia: "Achromatopsie",
+    left: "Gauche",
+    center: "Centre",
+    right: "Droite",
+    bars: "Barres",
+    wave: "Onde",
+    circle: "Cercle",
+    particles: "Particules",
+    spectrum: "Spectre",
+    rings: "Anneaux",
+    glitch: "Glitch",
+    nebula: "Nébuleuse",
+    fireworks: "Feux d'Artifice",
+    matrix: "Matrice"
+  }
+};
+
 export default function App() {
   const [currentSong, setCurrentSong] = useState<Song>(MOCK_SONGS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -200,13 +347,25 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isPlaylistsExpanded, setIsPlaylistsExpanded] = useState(true);
-  const [isYtPlaylistsExpanded, setIsYtPlaylistsExpanded] = useState(true);
+  const [isPlaylistsExpanded, setIsPlaylistsExpanded] = useState(false);
+  const [isYtPlaylistsExpanded, setIsYtPlaylistsExpanded] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<'general' | 'appearance' | 'audio' | 'accessibility' | 'language'>('general');
+  const [isStationModalOpen, setIsStationModalOpen] = useState(false);
+  const [stationArtists, setStationArtists] = useState<string[]>([]);
+  const [newEqName, setNewEqName] = useState('');
+  const [isSavingEq, setIsSavingEq] = useState(false);
+  const [isCastOpen, setIsCastOpen] = useState(false);
+  const [castDevice, setCastDevice] = useState<string | null>(null);
+  const [isConnectingCast, setIsConnectingCast] = useState(false);
   const [ytPlaylistSortBy, setYtPlaylistSortBy] = useState<'title' | 'channel'>('title');
   const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
   const [isVisualizerMenuOpen, setIsVisualizerMenuOpen] = useState(false);
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [isAlbumArtZoomed, setIsAlbumArtZoomed] = useState(false);
+  const [showRemainingTime, setShowRemainingTime] = useState(false);
+  const [isNowPlayingMoreOpen, setIsNowPlayingMoreOpen] = useState(false);
+  const [isOverlaySettingsOpen, setIsOverlaySettingsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist>(MOCK_PLAYLISTS[0]);
   const [multiSelect, setMultiSelect] = useState<string[]>([]);
@@ -219,7 +378,22 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>(() => {
     const saved = localStorage.getItem('ytm_preferences');
-    return saved ? JSON.parse(saved) : DEFAULT_PREFERENCES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Deep merge with DEFAULT_PREFERENCES to ensure all new fields exist
+        return {
+          ...DEFAULT_PREFERENCES,
+          ...parsed,
+          theme: { ...DEFAULT_PREFERENCES.theme, ...(parsed.theme || {}) },
+          audio: { ...DEFAULT_PREFERENCES.audio, ...(parsed.audio || {}) },
+          appSettings: { ...DEFAULT_PREFERENCES.appSettings, ...(parsed.appSettings || {}) }
+        };
+      } catch (e) {
+        return DEFAULT_PREFERENCES;
+      }
+    }
+    return DEFAULT_PREFERENCES;
   });
   const [theme, setTheme] = useState<ThemeConfig>(preferences.theme);
   const [queue, setQueue] = useState<Song[]>(MOCK_SONGS);
@@ -228,6 +402,149 @@ export default function App() {
   const playerRef = useRef<any>(null);
   const [isReady, setIsReady] = useState(false);
   const [canPlay, setCanPlay] = useState(false);
+
+  const [isMuted, setIsMuted] = useState(false);
+  const [previousVolume, setPreviousVolume] = useState(0.8);
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
+  const [editPlaylistName, setEditPlaylistName] = useState('');
+
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const eqNodesRef = useRef<BiquadFilterNode[]>([]);
+
+  const setupAudioNodes = useCallback((mediaElement: HTMLMediaElement) => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
+      const ctx = audioCtxRef.current;
+      
+      if (!sourceRef.current) {
+        sourceRef.current = ctx.createMediaElementSource(mediaElement);
+      }
+      
+      // Clear existing nodes if any
+      eqNodesRef.current.forEach(node => {
+        try { node.disconnect(); } catch(e) {}
+      });
+      eqNodesRef.current = [];
+      
+      // Create 10-band EQ
+      let lastNode: AudioNode = sourceRef.current;
+      
+      FREQUENCIES.forEach((freq, i) => {
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'peaking';
+        filter.frequency.value = freq;
+        filter.Q.value = 1;
+        const gains = preferences.audio.eqPreset === 'Custom' 
+          ? preferences.audio.customEq 
+          : (EQ_PRESETS[preferences.audio.eqPreset] || EQ_PRESETS['Flat']);
+        filter.gain.value = gains[i];
+        
+        lastNode.connect(filter);
+        lastNode = filter;
+        eqNodesRef.current.push(filter);
+      });
+      
+      lastNode.connect(ctx.destination);
+    } catch (err) {
+      console.error('Failed to setup audio nodes:', err);
+    }
+  }, [preferences.audio.eqPreset, preferences.audio.customEq]);
+
+  useEffect(() => {
+    if (eqNodesRef.current.length === 10 && audioCtxRef.current) {
+      const gains = preferences.audio.eqPreset === 'Custom' 
+        ? preferences.audio.customEq 
+        : (EQ_PRESETS[preferences.audio.eqPreset] || EQ_PRESETS['Flat']);
+      
+      eqNodesRef.current.forEach((node, i) => {
+        node.gain.setTargetAtTime(gains[i], audioCtxRef.current!.currentTime, 0.1);
+      });
+    }
+  }, [preferences.audio.eqPreset, preferences.audio.customEq]);
+
+  const toggleMute = () => {
+    if (isMuted) {
+      setVolume(previousVolume);
+      setIsMuted(false);
+    } else {
+      setPreviousVolume(volume);
+      setVolume(0);
+      setIsMuted(true);
+    }
+  };
+
+  const handleCreatePlaylist = async () => {
+    if (!newPlaylistName.trim()) return;
+    
+    const newPlaylist: Playlist = {
+      id: 'pl-' + Date.now(),
+      name: newPlaylistName,
+      songs: [],
+      thumbnail: 'https://picsum.photos/seed/playlist/400/400'
+    };
+    
+    const updatedPlaylists = [...preferences.playlists, newPlaylist];
+    await updatePreferences({ playlists: updatedPlaylists });
+    setNewPlaylistName('');
+    setIsCreatingPlaylist(false);
+    toast.success('Playlist created!');
+  };
+
+  const handleRenamePlaylist = async (id: string) => {
+    if (!editPlaylistName.trim()) return;
+    
+    const updatedPlaylists = preferences.playlists.map(p => 
+      p.id === id ? { ...p, name: editPlaylistName } : p
+    );
+    
+    await updatePreferences({ playlists: updatedPlaylists });
+    setEditingPlaylistId(null);
+    setEditPlaylistName('');
+    toast.success('Playlist renamed!');
+  };
+
+  const handleDeletePlaylist = async (id: string) => {
+    const updatedPlaylists = preferences.playlists.filter(p => p.id !== id);
+    await updatePreferences({ playlists: updatedPlaylists });
+    if (selectedPlaylist.id === id) {
+      setSelectedPlaylist(MOCK_PLAYLISTS[0]);
+    }
+    toast.success('Playlist deleted');
+  };
+
+  const handleAddToPlaylist = async (song: Song, playlistId: string) => {
+    const updatedPlaylists = preferences.playlists.map(p => {
+      if (p.id === playlistId) {
+        if (p.songs.some((s: Song) => s.id === song.id)) {
+          toast.error('Song already in playlist');
+          return p;
+        }
+        toast.success(`Added to ${p.name}`);
+        return { ...p, songs: [...p.songs, song] };
+      }
+      return p;
+    });
+    
+    await updatePreferences({ playlists: updatedPlaylists });
+  };
+
+  const saveCustomEqProfile = async (name: string) => {
+    const newProfile: CustomEqProfile = {
+      id: 'eq-' + Date.now(),
+      name,
+      values: [...preferences.audio.customEq]
+    };
+    
+    const updatedProfiles = [...preferences.audio.customEqProfiles, newProfile];
+    await updatePreferences({ audio: { ...preferences.audio, customEqProfiles: updatedProfiles } });
+    toast.success(`Profile "${name}" saved!`);
+  };
 
   // Reset ready state when song changes to prevent play/pause interruption
   useEffect(() => {
@@ -250,7 +567,25 @@ export default function App() {
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    
+    // Check for audio context state
+    const checkAudio = async () => {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        toast.info('Audio is currently muted by your browser.', {
+          description: 'Click anywhere to enable sound.',
+          action: {
+            label: 'Enable Sound',
+            onClick: () => audioCtx.resume(),
+          },
+        });
+      }
+    };
+    window.addEventListener('click', checkAudio, { once: true });
+
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
   }, []);
 
   // Apply theme to CSS variables
@@ -262,6 +597,13 @@ export default function App() {
     document.documentElement.style.setProperty('--text-color', theme.textColor);
     document.documentElement.style.setProperty('--app-font', theme.fontFamily);
     document.documentElement.style.setProperty('--app-font-size', `${theme.fontSize}px`);
+    
+    // Helper for RGB values for shadows/transparency
+    const hexToRgb = (hex: string) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '255, 255, 255';
+    };
+    document.documentElement.style.setProperty('--tertiary-color-rgb', hexToRgb(theme.tertiaryColor));
   }, [theme]);
 
   // Firebase Auth and Settings Sync
@@ -329,10 +671,73 @@ export default function App() {
     }, 2000);
   };
 
-  const handleCast = () => {
-    toast.info('Searching for devices...', {
-      description: 'Make sure your Chromecast or smart TV is on the same Wi-Fi network.',
-      icon: <Cast className="w-4 h-4 text-tertiary" />,
+  const handleCast = async () => {
+    // Try to find the underlying video element from ReactPlayer
+    const video = document.querySelector('video');
+    if (video && (video as any).remote) {
+      try {
+        await (video as any).remote.prompt();
+      } catch (e: any) {
+        // Only show error if it's not a dismissal or user cancellation
+        const isDismissal = e.name === 'NotAllowedError' || 
+                           e.name === 'AbortError' || 
+                           e.name === 'NS_ERROR_DOM_ABORT_ERR' ||
+                           (e.message && (
+                             e.message.toLowerCase().includes('dismissed') || 
+                             e.message.toLowerCase().includes('cancel') ||
+                             e.message.toLowerCase().includes('interrupted')
+                           ));
+        
+        if (!isDismissal) {
+          console.error('Remote Playback error:', e);
+          toast.error('Failed to start casting.');
+        }
+      }
+    } else {
+      toast.info('Searching for devices...', {
+        description: 'Make sure your Chromecast or smart TV is on the same Wi-Fi network.',
+        icon: <Cast className="w-4 h-4 text-tertiary" />,
+      });
+    }
+  };
+
+  // Accessibility: Screen Reader / TTS
+  const speak = useCallback((text: string) => {
+    if (preferences.accessibility.screenReader && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+  }, [preferences.accessibility.screenReader]);
+
+  // Accessibility: Color Blind Filters
+  useEffect(() => {
+    const filter = preferences.accessibility.colorBlindMode;
+    const root = document.documentElement;
+    if (filter === 'protanopia') root.style.filter = 'url(#protanopia-filter)';
+    else if (filter === 'deuteranopia') root.style.filter = 'url(#deuteranopia-filter)';
+    else if (filter === 'tritanopia') root.style.filter = 'url(#tritanopia-filter)';
+    else if (filter === 'achromatopsia') root.style.filter = 'grayscale(100%)';
+    else root.style.filter = 'none';
+    
+    if (preferences.accessibility.highContrast) {
+      root.classList.add('high-contrast');
+    } else {
+      root.classList.remove('high-contrast');
+    }
+  }, [preferences.accessibility.colorBlindMode, preferences.accessibility.highContrast]);
+
+  const t = (key: string) => {
+    const lang = preferences.language || 'English';
+    return translations[lang]?.[key] || translations['English']?.[key] || key;
+  };
+
+  const handleMore = (song?: Song) => {
+    toast(song ? `Options for ${song.title}` : 'More Options', {
+      description: 'Additional settings and features coming soon.',
+      icon: <MoreHorizontal className="w-4 h-4 text-tertiary" />,
     });
   };
 
@@ -591,9 +996,30 @@ export default function App() {
     }
   }, [currentSong, theme.dynamicTheme]);
 
+  // Poll for duration if it's missing (especially for YouTube)
+  useEffect(() => {
+    if (isPlaying && (!duration || duration === 0)) {
+      const interval = setInterval(() => {
+        if (playerRef.current && typeof (playerRef.current as any).getDuration === 'function') {
+          const d = (playerRef.current as any).getDuration();
+          if (d && d > 0) {
+            setDuration(d);
+            clearInterval(interval);
+          }
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [isPlaying, duration, currentSong]);
+
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
+    if (isNaN(seconds) || seconds === Infinity) return '0:00';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -601,13 +1027,9 @@ export default function App() {
     setCurrentTime(state.playedSeconds);
     // Fallback to fetch duration if onDuration was skipped or missed
     if (playerRef.current && (!duration || duration === 0)) {
-      const d = playerRef.current.getDuration();
+      const d = (playerRef.current as any).getDuration();
       if (d) setDuration(d);
     }
-  };
-
-  const handleDuration = (d: number) => {
-    setDuration(d);
   };
 
   const handleEnded = () => {
@@ -721,7 +1143,12 @@ export default function App() {
   }, [currentLyricIndex]);
 
   return (
-    <div className="flex h-screen bg-black text-white font-sans overflow-hidden relative" style={{ fontSize: `var(--app-font-size)` }}>
+    <div className="flex h-screen bg-black text-white font-sans overflow-hidden relative flex-row" style={{ fontSize: `var(--app-font-size)` }}>
+      {/* 
+        YouTube Music Integration Note: 
+        This application uses standard YouTube IFrame API and official YouTube Music data structures 
+        to ensure compatibility with future updates to the official YouTube Music service.
+      */}
       {/* Sidebar Toggle (Always Accessible) */}
       {!isSidebarOpen && (
         <button 
@@ -742,7 +1169,7 @@ export default function App() {
             exit={{ x: -256 }}
             transition={{ type: 'spring', damping: 20, stiffness: 100 }}
             className={cn(
-              "fixed md:relative z-50 h-full bg-zinc-900/95 md:bg-zinc-900/50 border-r border-tertiary/30 flex flex-col p-1.5 gap-2 backdrop-blur-xl md:backdrop-blur-none transition-all duration-300 overflow-y-auto custom-scrollbar"
+              "fixed md:relative z-50 h-full bg-zinc-900/95 md:bg-zinc-900/50 border-r border-tertiary/30 flex flex-col p-1.5 gap-2 backdrop-blur-xl md:backdrop-blur-none transition-all duration-300 overflow-y-auto custom-scrollbar flex-shrink-0"
             )}
           >
             <div className="flex items-center justify-between px-2 mb-1">
@@ -790,12 +1217,12 @@ export default function App() {
             </div>
 
         <nav className="flex flex-col gap-0.5">
-          {!isSidebarCollapsed && <div className="text-[7px] uppercase tracking-[0.2em] text-zinc-500 font-bold mb-0.5 px-2">Library</div>}
           <button 
             onClick={handleHome}
+            onMouseEnter={() => speak(t('home'))}
             className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px]", isSidebarCollapsed && "justify-center px-0")}
           >
-            <Grid className="w-3.5 h-3.5 text-tertiary" /> {!isSidebarCollapsed && "Home"}
+            <Grid className="w-3.5 h-3.5 text-tertiary" /> {!isSidebarCollapsed && t('home')}
           </button>
           <button 
             onClick={handleExplore}
@@ -817,7 +1244,17 @@ export default function App() {
             {!isSidebarCollapsed && (
               <span className="flex items-center gap-1.5">
                 Start Mix
-                <span className="text-[7px] bg-tertiary/20 text-tertiary px-1 rounded uppercase font-black">New</span>
+              </span>
+            )}
+          </button>
+          <button 
+            onClick={() => setIsStationModalOpen(true)}
+            className={cn("flex items-center gap-2.5 p-1 text-zinc-300 hover:text-white hover:bg-white/5 rounded-md transition-all text-[10px] group", isSidebarCollapsed && "justify-center px-0")}
+          >
+            <Disc3 className="w-3.5 h-3.5 text-tertiary" /> 
+            {!isSidebarCollapsed && (
+              <span className="flex items-center gap-1.5">
+                {t('createStation')}
               </span>
             )}
           </button>
@@ -876,14 +1313,15 @@ export default function App() {
               {!isSidebarCollapsed && (
                 <button 
                   onClick={() => setIsPlaylistsExpanded(!isPlaylistsExpanded)}
+                  onMouseEnter={() => speak(t('yourLibrary'))}
                   className="flex items-center justify-between w-full px-2 py-1 mb-0.5 group hover:bg-white/5 rounded-md transition-colors"
                 >
                   <div className="flex items-center gap-2">
                     <div className="w-1 h-3 bg-tertiary rounded-full" />
-                    <h3 className="text-[8px] uppercase tracking-[0.2em] text-zinc-400 font-bold group-hover:text-tertiary transition-colors">Your Library</h3>
+                    <h3 className="text-[8px] uppercase tracking-[0.2em] text-zinc-400 font-bold group-hover:text-tertiary transition-colors">{t('yourLibrary')}</h3>
                   </div>
                   <div className={cn("transition-transform duration-300", isPlaylistsExpanded ? "rotate-180" : "")}>
-                    <SkipForward className="w-2.5 h-2.5 text-tertiary/60 rotate-90" />
+                    <ChevronDown className="w-2.5 h-2.5 text-tertiary/60" />
                   </div>
                 </button>
               )}
@@ -911,7 +1349,7 @@ export default function App() {
                         {!isSidebarCollapsed && (
                           <div className="flex flex-col items-start overflow-hidden">
                             <span className="text-[10px] font-bold truncate">Liked Music</span>
-                            <span className="text-[7px] opacity-60">{preferences.likedSongs.length} songs</span>
+                            <span className="text-[7px] opacity-60">{(preferences.likedSongs?.length || 0)} songs</span>
                           </div>
                         )}
                       </button>
@@ -919,7 +1357,7 @@ export default function App() {
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            const likedSongs = MOCK_SONGS.filter(s => preferences.likedSongs.includes(s.id));
+                            const likedSongs = MOCK_SONGS.filter(s => (preferences.likedSongs || []).includes(s.id));
                             if (likedSongs.length > 0) {
                               handleSelectLikedMusic();
                               setCurrentSong(likedSongs[0]);
@@ -980,7 +1418,7 @@ export default function App() {
                     <div className="w-1 h-3 bg-red-500 rounded-full" />
                     <h3 className="text-[8px] uppercase tracking-[0.2em] text-zinc-400 font-bold group-hover:text-tertiary transition-colors">YouTube Playlists</h3>
                     <div className={cn("transition-transform duration-300", isYtPlaylistsExpanded ? "rotate-180" : "")}>
-                      <SkipForward className="w-2.5 h-2.5 text-tertiary/60 rotate-90" />
+                      <ChevronDown className="w-2.5 h-2.5 text-tertiary/60" />
                     </div>
                   </button>
                   
@@ -1100,7 +1538,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col relative overflow-hidden">
+      <div className="flex-1 flex flex-col relative overflow-hidden min-w-[300px]">
         {/* Error Notification */}
         <AnimatePresence>
           {error && (
@@ -1134,13 +1572,13 @@ export default function App() {
               </button>
             )}
             <div className="relative w-28 md:w-48">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-zinc-500" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-secondary" />
               <input 
                 type="text" 
                 placeholder="Search..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-zinc-800/50 border border-tertiary/20 rounded-full py-0.5 pl-7 pr-3 focus:outline-none focus:border-primary/50 transition-colors text-[9px]"
+                className="w-full bg-zinc-800/50 border border-tertiary rounded-full py-0.5 pl-7 pr-3 focus:outline-none focus:ring-1 focus:ring-tertiary transition-all text-[9px] shadow-[0_0_10px_rgba(var(--tertiary-color-rgb),0.3)] placeholder:text-secondary/60"
               />
             </div>
           </div>
@@ -1156,7 +1594,13 @@ export default function App() {
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto p-2 md:p-3 custom-scrollbar relative">
+        <main 
+          className={cn(
+            "flex-1 overflow-y-auto p-2 md:p-3 custom-scrollbar relative transition-all duration-500 min-w-0",
+            showSettings && !isMobile ? "md:mr-96" : "md:mr-0",
+            isSidebarOpen && !isMobile ? "md:ml-0" : "md:ml-0"
+          )}
+        >
           {isLoading && (
             <div className="absolute inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center">
               <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -1266,13 +1710,13 @@ export default function App() {
             <div className="flex flex-col justify-end gap-1 text-center md:text-left">
               <h1 className="text-xl md:text-3xl font-black tracking-tighter leading-tight">{selectedPlaylist.name}</h1>
               <div className="flex items-center justify-center md:justify-start gap-2 text-zinc-400 text-[9px] font-medium">
-                <span className="bg-white/5 px-2 py-0.5 rounded-full border border-white/5">{selectedPlaylist.songs.length} songs</span>
+                <span className="bg-white/5 px-2 py-0.5 rounded-full border border-white/5">{(selectedPlaylist.songs?.length || 0)} songs</span>
                 <span className="bg-white/5 px-2 py-0.5 rounded-full border border-white/5">Premium Stream</span>
               </div>
               <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
                 <button 
                   onClick={() => {
-                    if (selectedPlaylist.songs.length > 0) {
+                    if ((selectedPlaylist.songs?.length || 0) > 0) {
                       setCurrentSong(selectedPlaylist.songs[0]);
                       setIsPlaying(true);
                       setQueue(selectedPlaylist.songs);
@@ -1404,7 +1848,7 @@ export default function App() {
                     </div>
                   </div>
                   <h3 className="text-xs font-bold truncate leading-tight">{p.name}</h3>
-                  <p className="text-[10px] text-zinc-500 truncate">{p.songs.length} songs</p>
+                  <p className="text-[10px] text-zinc-500 truncate">{(p.songs?.length || 0)} songs</p>
                 </div>
               ))}
             </div>
@@ -1487,41 +1931,71 @@ export default function App() {
         </main>
 
         {/* Video Player Overlay */}
-        <div className={cn(
-          "absolute transition-all duration-500 z-30 group",
-          isMobile ? "right-4 bottom-24 w-32" : "right-6 bottom-24 w-64",
-          "aspect-video rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10"
-        )}>
+        <motion.div 
+          drag
+          dragMomentum={false}
+          dragConstraints={{ left: 0, right: window.innerWidth - (isMobile ? 128 : 256), top: 0, bottom: window.innerHeight - (isMobile ? 72 : 144) }}
+          className={cn(
+            "fixed transition-opacity duration-700 z-[60] group cursor-move",
+            isMobile ? "right-4 top-20 w-32" : "right-6 top-20 w-64",
+            "aspect-video rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10",
+            preferences.audio.playbackMode === 'song' && "opacity-0 pointer-events-none scale-90"
+          )}
+        >
+          {/* Drag Handle Cue */}
+          <div className="absolute top-1/2 left-1 -translate-y-1/2 z-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            <div className="w-1 h-8 bg-white/20 rounded-full flex flex-col items-center justify-center gap-1">
+              <div className="w-0.5 h-0.5 bg-white rounded-full" />
+              <div className="w-0.5 h-0.5 bg-white rounded-full" />
+              <div className="w-0.5 h-0.5 bg-white rounded-full" />
+            </div>
+          </div>
+
           <div className="absolute inset-0 z-10">
             <ReactPlayer 
               {...({
                 ref: playerRef,
                 url: currentSong.videoUrl,
-                playing: isPlaying,
+                playing: isReady && isPlaying,
                 volume: volume,
                 onEnded: handleEnded,
                 onProgress: handleProgress,
                 onError: (e: any) => console.error('ReactPlayer Error:', e),
-                onReady: () => {
+                onReady: (player: any) => {
                   setIsReady(true);
-                  if (playerRef.current) {
-                    const d = playerRef.current.getDuration();
+                  if (playerRef.current && typeof (playerRef.current as any).getDuration === 'function') {
+                    const d = (playerRef.current as any).getDuration();
                     if (d) setDuration(d);
+                  }
+                  
+                  // Setup Audio Nodes for EQ
+                  const internal = player.getInternalPlayer();
+                  if (internal instanceof HTMLMediaElement) {
+                    setupAudioNodes(internal);
                   }
                   console.log('Player Ready');
                 },
                 onPlay: () => {
-                  if (playerRef.current) {
-                    const d = playerRef.current.getDuration();
+                  if (playerRef.current && typeof (playerRef.current as any).getDuration === 'function') {
+                    const d = (playerRef.current as any).getDuration();
                     if (d) setDuration(d);
                   }
                   console.log('Player Playing');
                 },
+                progressInterval: 100,
                 config: {
                   youtube: {
                     origin: typeof window !== 'undefined' ? window.location.origin : '',
-                    rel: 0,
-                    fs: 1
+                    playerVars: {
+                      autoplay: 1,
+                      controls: 0,
+                      modestbranding: 1,
+                      rel: 0,
+                      showinfo: 0,
+                      fs: 0,
+                      iv_load_policy: 3,
+                      disablekb: 1
+                    }
                   }
                 },
                 width: "100%",
@@ -1537,31 +2011,104 @@ export default function App() {
               color={theme.visualizerColor || theme.tertiaryColor}
             />
           </div>
-          <div className="absolute inset-0 z-30 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
-             <Maximize2 className="w-6 h-6 text-white cursor-pointer hover:scale-110 transition-transform" />
+          <div className="absolute inset-0 z-30 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-start justify-end p-2 backdrop-blur-[2px]">
+             <div className="flex flex-col gap-2">
+               <button 
+                 onClick={() => setIsNowPlayingOpen(true)}
+                 className="p-1.5 bg-black/50 hover:bg-tertiary/40 rounded-full transition-all border border-white/10"
+                 title="Expand"
+               >
+                 <Maximize2 className="w-4 h-4 text-white" />
+               </button>
+               <button 
+                 onClick={() => setIsOverlaySettingsOpen(!isOverlaySettingsOpen)}
+                 className="p-1.5 bg-black/50 hover:bg-tertiary/40 rounded-full transition-all border border-white/10"
+                 title="Settings"
+               >
+                 <Settings className="w-4 h-4 text-white" />
+               </button>
+               <button 
+                 onClick={() => updatePreferences({ audio: { ...preferences.audio, playbackMode: 'song' } })}
+                 className="p-1.5 bg-black/50 hover:bg-red-500/40 rounded-full transition-all border border-white/10"
+                 title="Close Video"
+               >
+                 <X className="w-4 h-4 text-white" />
+               </button>
+             </div>
           </div>
-        </div>
+
+          <AnimatePresence>
+            {isOverlaySettingsOpen && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="absolute inset-0 z-40 bg-black/80 backdrop-blur-md p-3 flex flex-col gap-2 overflow-y-auto scrollbar-hide"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold text-tertiary uppercase tracking-widest">Visualizer</span>
+                  <button onClick={() => setIsOverlaySettingsOpen(false)}><ChevronDown className="w-3 h-3 text-zinc-500" /></button>
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {['bars', 'wave', 'circle', 'particles', 'spectrum', 'rings', 'glitch', 'nebula', 'fireworks', 'matrix'].map((type) => (
+                    <button 
+                      key={type}
+                      onClick={() => updatePreferences({ theme: { ...theme, visualizerType: type as any } })}
+                      className={cn(
+                        "px-2 py-1 rounded text-[8px] capitalize transition-all border",
+                        theme.visualizerType === type ? "bg-tertiary/20 border-tertiary text-tertiary" : "border-white/5 text-zinc-400 hover:text-white"
+                      )}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-1 mt-1">
+                  <div className="flex justify-between text-[8px] text-zinc-500 uppercase font-bold">
+                    <span>Opacity</span>
+                    <span>{Math.round(theme.visualizerOpacity * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="1" step="0.1" 
+                    value={theme.visualizerOpacity}
+                    onChange={(e) => updatePreferences({ theme: { ...theme, visualizerOpacity: parseFloat(e.target.value) } })}
+                    className="w-full accent-tertiary h-1 bg-zinc-800 rounded-full appearance-none"
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
 
         {/* Player Controls */}
-        <footer className="h-14 bg-zinc-900/80 backdrop-blur-2xl border-t border-tertiary/20 px-3 md:px-4 flex items-center justify-between z-40">
+        <footer className="h-16 md:h-20 bg-zinc-900/80 backdrop-blur-2xl border-t border-tertiary/20 px-3 md:px-6 flex items-center justify-between z-40 gap-4">
           <div 
-            className="flex items-center gap-2.5 w-1/3 md:w-1/4 overflow-hidden cursor-pointer group"
+            className="flex items-center gap-3 flex-shrink-0 max-w-[35%] overflow-hidden cursor-pointer group"
             onClick={() => setIsNowPlayingOpen(true)}
           >
             <div className="relative flex-shrink-0">
-              <img src={currentSong.thumbnail} className="w-9 h-9 md:w-10 md:h-10 rounded-lg object-cover shadow-lg border border-white/5 group-hover:scale-105 transition-transform" />
+              <img src={currentSong.thumbnail} className="w-10 h-10 md:w-12 md:h-12 rounded-lg object-cover shadow-lg border border-white/5 group-hover:scale-105 transition-transform" />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-                <Maximize2 className="w-3 h-3 text-white" />
+                <Maximize2 className="w-4 h-4 text-white" />
               </div>
             </div>
-            <div className="flex flex-col overflow-hidden">
-              <span className="font-black text-[11px] md:text-xs truncate leading-tight group-hover:text-tertiary transition-colors">{currentSong.title}</span>
-              <span className="text-[8px] md:text-[10px] text-zinc-400 truncate font-medium">{currentSong.artist}</span>
+            <div className="flex flex-col min-w-0">
+              <span className="font-black text-xs md:text-sm truncate leading-tight group-hover:text-tertiary transition-colors">{currentSong.title}</span>
+              <span className="text-[9px] md:text-xs text-zinc-400 truncate font-medium">{currentSong.artist}</span>
             </div>
-            <Heart className="hidden md:block w-3.5 h-3.5 text-zinc-500 hover:text-primary cursor-pointer transition-all ml-1 hover:scale-110" />
+            <Heart 
+              className={cn(
+                "hidden lg:block w-4 h-4 cursor-pointer transition-all ml-2 flex-shrink-0 hover:scale-110",
+                isSongLiked(currentSong.id) ? "text-primary fill-primary" : "text-zinc-500 hover:text-white"
+              )} 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleLikeSong(currentSong.id);
+              }}
+            />
           </div>
 
-          <div className="flex flex-col items-center gap-0.5 flex-1 max-w-xl px-4">
+          <div className="flex flex-col items-center gap-0.5 flex-1 max-w-xl min-w-0">
             <div className="flex items-center gap-3 md:gap-5">
               <button 
                 onClick={() => blockSong(currentSong.id)}
@@ -1571,14 +2118,20 @@ export default function App() {
                 <Ban className="w-3.5 h-3.5" />
                 <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/5">Never play again</span>
               </button>
-              <Shuffle 
-                className={cn("hidden md:block w-3.5 h-3.5 cursor-pointer transition-all hover:scale-110", isShuffle ? "text-primary" : "text-zinc-500 hover:text-white")} 
+              <button 
                 onClick={() => setIsShuffle(!isShuffle)}
-              />
-              <SkipBack 
+                className={cn("hidden md:block p-1 transition-all hover:scale-110 group relative", isShuffle ? "text-primary" : "text-zinc-500 hover:text-white")}
+              >
+                <Shuffle className="w-3.5 h-3.5" />
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/5">Shuffle</span>
+              </button>
+              <button 
                 onClick={handlePrevious}
-                className="w-4 h-4 md:w-5 md:h-5 text-zinc-300 hover:text-white cursor-pointer hover:scale-110 transition-transform" 
-              />
+                className="p-1 text-zinc-300 hover:text-white transition-all hover:scale-110 group relative"
+              >
+                <SkipBack className="w-4 h-4 md:w-5 md:h-5 fill-current" />
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/5">Previous</span>
+              </button>
               <button 
                 onClick={() => handleSeek(-preferences.audio.seekTime)}
                 className="hidden md:flex items-center justify-center w-7 h-7 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-all"
@@ -1589,9 +2142,10 @@ export default function App() {
               </button>
               <button 
                 onClick={() => setIsPlaying(!isPlaying)}
-                className="w-8 h-8 md:w-9 md:h-9 rounded-xl pink-gradient-bg flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,0,127,0.2)]"
+                className="w-8 h-8 md:w-9 md:h-9 rounded-xl pink-gradient-bg flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,0,127,0.2)] group relative"
               >
                 {isPlaying ? <Pause className="w-4 h-4 md:w-5 md:h-5 text-white fill-white" /> : <Play className="w-4 h-4 md:w-5 md:h-5 text-white fill-white translate-x-0.5" />}
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/5">{isPlaying ? 'Pause' : 'Play'}</span>
               </button>
               <button 
                 onClick={() => handleSeek(preferences.audio.seekTime)}
@@ -1601,14 +2155,20 @@ export default function App() {
                 <RotateCw className="w-3.5 h-3.5" />
                 <span className="text-[7px] font-bold ml-0.5">{preferences.audio.seekTime}</span>
               </button>
-              <SkipForward 
+              <button 
                 onClick={handleNext}
-                className="w-4 h-4 md:w-5 md:h-5 text-zinc-300 hover:text-white cursor-pointer hover:scale-110 transition-transform" 
-              />
-              <Repeat 
-                className={cn("hidden md:block w-3.5 h-3.5 cursor-pointer transition-all hover:scale-110", repeatMode !== 'none' ? "text-primary" : "text-zinc-500 hover:text-white")}
+                className="p-1 text-zinc-300 hover:text-white transition-all hover:scale-110 group relative"
+              >
+                <SkipForward className="w-4 h-4 md:w-5 md:h-5 fill-current" />
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/5">Next</span>
+              </button>
+              <button 
                 onClick={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')}
-              />
+                className={cn("hidden md:block p-1 transition-all hover:scale-110 group relative", repeatMode !== 'none' ? "text-primary" : "text-zinc-500 hover:text-white")}
+              >
+                <Repeat className="w-3.5 h-3.5" />
+                <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-zinc-800 text-[8px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/5">Repeat: {repeatMode}</span>
+              </button>
             </div>
             <div className="w-full flex items-center gap-2 text-[8px] md:text-[9px] text-zinc-500 font-mono font-bold">
               <span>{formatTime(currentTime)}</span>
@@ -1644,8 +2204,10 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 w-1/3 md:w-1/4">
-            <Volume2 className="hidden md:block w-3.5 h-3.5 text-zinc-400" />
+          <div className="flex items-center justify-end gap-3 flex-shrink-0 max-w-[25%]">
+            <button onClick={toggleMute} className="hidden md:block text-zinc-400 hover:text-white transition-colors">
+              {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            </button>
             <div className="hidden md:block w-20 h-1 bg-zinc-800 rounded-full relative group cursor-pointer">
               <input 
                 type="range" 
@@ -1658,8 +2220,14 @@ export default function App() {
               />
               <div className="absolute left-0 top-0 h-full bg-white rounded-full transition-all" style={{ width: `${volume * 100}%` }} />
               <div className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" style={{ left: `${volume * 100}%` }} />
+              <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[8px] font-mono text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                {Math.round(volume * 100)}%
+              </span>
             </div>
-            <Maximize2 className="w-3.5 h-3.5 text-zinc-400 hover:text-white cursor-pointer hover:scale-110 transition-transform" />
+            <Maximize2 
+              className="w-3.5 h-3.5 text-zinc-400 hover:text-white cursor-pointer hover:scale-110 transition-transform" 
+              onClick={() => setIsNowPlayingOpen(true)}
+            />
           </div>
         </footer>
 
@@ -1691,23 +2259,173 @@ export default function App() {
                   <ChevronDown className="w-6 h-6" />
                 </button>
                 <div className="flex flex-col items-center">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-400 font-bold">Now Playing</span>
+                  <div className="flex items-center gap-4 bg-white/5 p-1 rounded-full border border-white/10 mb-1">
+                    <button 
+                      onClick={() => updatePreferences({ audio: { ...preferences.audio, playbackMode: 'song' } })}
+                      className={cn(
+                        "px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
+                        preferences.audio.playbackMode === 'song' ? "bg-white text-black shadow-lg" : "text-zinc-500 hover:text-white"
+                      )}
+                    >
+                      Song
+                    </button>
+                    <button 
+                      onClick={() => updatePreferences({ audio: { ...preferences.audio, playbackMode: 'video' } })}
+                      className={cn(
+                        "px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
+                        preferences.audio.playbackMode === 'video' ? "bg-white text-black shadow-lg" : "text-zinc-500 hover:text-white"
+                      )}
+                    >
+                      Video
+                    </button>
+                  </div>
                   <span className="text-[11px] font-bold text-tertiary">{currentSong.album}</span>
                 </div>
-                <button className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                  <MoreHorizontal className="w-6 h-6" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleCast}
+                    className="p-2 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-tertiary"
+                    title="Cast to device"
+                  >
+                    <Cast className="w-6 h-6" />
+                  </button>
+                  <div className="relative">
+                    <button 
+                      onClick={() => setIsNowPlayingMoreOpen(!isNowPlayingMoreOpen)}
+                      className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                    >
+                      <MoreHorizontal className="w-6 h-6" />
+                    </button>
+
+                    <AnimatePresence>
+                      {isNowPlayingMoreOpen && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute right-0 top-full mt-2 w-64 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-2xl z-50"
+                        >
+                          <div className="space-y-4">
+                            <div>
+                              <h4 className="text-[10px] font-bold text-tertiary uppercase tracking-[0.2em] mb-3">Visualizer Settings</h4>
+                              <div className="grid grid-cols-2 gap-2">
+                                {['bars', 'wave', 'circle', 'particles', 'spectrum', 'rings', 'glitch', 'nebula', 'fireworks', 'matrix'].map((type) => (
+                                  <button 
+                                    key={type}
+                                    onClick={() => updatePreferences({ theme: { ...theme, visualizerType: type as any } })}
+                                    className={cn(
+                                      "px-3 py-2 rounded-xl text-[10px] capitalize transition-all border",
+                                      theme.visualizerType === type ? "bg-tertiary/20 border-tertiary text-tertiary font-bold" : "border-white/5 text-zinc-400 hover:text-white hover:bg-white/5"
+                                    )}
+                                  >
+                                    {type}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                                <span>Opacity</span>
+                                <span>{Math.round(theme.visualizerOpacity * 100)}%</span>
+                              </div>
+                              <input 
+                                type="range" min="0" max="1" step="0.1" 
+                                value={theme.visualizerOpacity}
+                                onChange={(e) => updatePreferences({ theme: { ...theme, visualizerOpacity: parseFloat(e.target.value) } })}
+                                className="w-full accent-tertiary h-1 bg-zinc-800 rounded-full appearance-none"
+                              />
+                            </div>
+
+                            <div className="pt-2 border-t border-white/5 space-y-2">
+                              {(preferences.playlists?.length || 0) > 0 ? (
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest px-3">Add to Playlist</span>
+                                  {preferences.playlists.map(p => (
+                                    <button 
+                                      key={p.id}
+                                      onClick={() => {
+                                        handleAddToPlaylist(currentSong, p.id);
+                                        setIsNowPlayingMoreOpen(false);
+                                      }}
+                                      className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[11px] text-zinc-300 hover:text-white hover:bg-white/5 transition-all"
+                                    >
+                                      <Plus className="w-4 h-4" /> {p.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <button 
+                                  onClick={() => {
+                                    setIsCreatingPlaylist(true);
+                                    setIsNowPlayingMoreOpen(false);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[11px] text-zinc-300 hover:text-white hover:bg-white/5 transition-all"
+                                >
+                                  <Plus className="w-4 h-4" /> Create Playlist
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => window.open(currentSong.videoUrl, '_blank')}
+                                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[11px] text-zinc-300 hover:text-white hover:bg-white/5 transition-all"
+                              >
+                                <ExternalLink className="w-4 h-4" /> Open in YouTube
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
               </header>
 
               {/* Main Content */}
               <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 md:px-20 overflow-hidden">
                 {/* Album Art Section (Centered & Large) */}
-                <div className="relative w-full max-w-[300px] md:max-w-[500px] aspect-square group shrink-0 flex items-center justify-center">
-                  <motion.img 
-                    layoutId="album-art"
-                    src={currentSong.thumbnail} 
-                    className="absolute inset-0 w-full h-full object-cover rounded-3xl shadow-[0_40px_100px_rgba(0,0,0,0.8)] border border-white/10" 
-                  />
+                <div className={cn(
+                  "relative w-full aspect-square group shrink-0 flex items-center justify-center transition-all duration-700",
+                  isAlbumArtZoomed ? "max-w-full md:max-w-[700px]" : "max-w-[300px] md:max-w-[500px]"
+                )}>
+                  {/* Double Tap to Seek Zones */}
+                  <div className="absolute inset-0 z-40 flex pointer-events-none">
+                    <div 
+                      className="flex-1 pointer-events-auto cursor-pointer"
+                      onDoubleClick={() => handleSeek(-preferences.audio.seekTime)}
+                    />
+                    <div 
+                      className="flex-1 pointer-events-auto cursor-pointer"
+                      onDoubleClick={() => handleSeek(preferences.audio.seekTime)}
+                    />
+                  </div>
+
+                  {preferences.audio.playbackMode === 'video' ? (
+                    <div className="absolute inset-0 w-full h-full rounded-3xl overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.8)] border border-white/10">
+                      <ReactPlayer 
+                        {...({
+                          url: currentSong.videoUrl,
+                          playing: isPlaying,
+                          volume: volume,
+                          muted: false,
+                          width: "100%",
+                          height: "100%",
+                          onReady: (player: any) => {
+                            const internal = player.getInternalPlayer();
+                            if (internal instanceof HTMLMediaElement) {
+                              setupAudioNodes(internal);
+                            }
+                          },
+                          style: { position: 'absolute', top: 0, left: 0 }
+                        } as any)}
+                      />
+                    </div>
+                  ) : (
+                    <motion.img 
+                      layoutId="album-art"
+                      src={currentSong.thumbnail} 
+                      className="absolute inset-0 w-full h-full object-cover rounded-3xl shadow-[0_40px_100px_rgba(0,0,0,0.8)] border border-white/10" 
+                    />
+                  )}
                   
                   {/* Visualizer Overlay */}
                   {theme.visualizerNowPlaying && (
@@ -1715,10 +2433,18 @@ export default function App() {
                       <Visualizer 
                         opacity={theme.visualizerNowPlayingOpacity}
                         type={theme.visualizerType}
-                        color={theme.visualizerColor}
+                        color={theme.visualizerColor || theme.tertiaryColor}
                       />
                     </div>
                   )}
+
+                  {/* Resizer Button */}
+                  <button 
+                    onClick={() => setIsAlbumArtZoomed(!isAlbumArtZoomed)}
+                    className="absolute top-4 right-4 z-40 p-2 bg-black/50 hover:bg-white/20 rounded-full transition-all border border-white/10 opacity-0 group-hover:opacity-100"
+                  >
+                    {isAlbumArtZoomed ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                  </button>
 
                   {/* Lyrics Overlay */}
                   <div 
@@ -1765,8 +2491,11 @@ export default function App() {
                   </div>
 
                   <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl flex items-center justify-center z-40">
-                    <button className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center hover:scale-110 transition-transform">
-                      <Maximize2 className="w-8 h-8" />
+                    <button 
+                      onClick={() => setIsAlbumArtZoomed(!isAlbumArtZoomed)}
+                      className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center hover:scale-110 transition-transform"
+                    >
+                      {isAlbumArtZoomed ? <Minimize2 className="w-8 h-8" /> : <Maximize2 className="w-8 h-8" />}
                     </button>
                   </div>
                 </div>
@@ -1843,13 +2572,23 @@ export default function App() {
                       />
                     </div>
                     <div className="flex justify-between text-[10px] md:text-xs text-zinc-500 font-mono font-bold">
-                      <span>{formatTime(currentTime)}</span>
-                      <span>{formatTime(duration)}</span>
+                      <span className="cursor-pointer hover:text-white transition-colors" onClick={() => setShowRemainingTime(!showRemainingTime)}>
+                        {formatTime(currentTime)}
+                      </span>
+                      <span className="cursor-pointer hover:text-white transition-colors" onClick={() => setShowRemainingTime(!showRemainingTime)}>
+                        {showRemainingTime ? `-${formatTime(duration - currentTime)}` : formatTime(duration)}
+                      </span>
                     </div>
                   </div>
 
                   {/* Playback Buttons */}
-                  <div className="flex items-center justify-between">
+                  <motion.div 
+                    className="flex items-center justify-between"
+                    initial={{ y: 0 }}
+                    animate={{ y: isPlaying ? 20 : 0, opacity: isPlaying ? 0.3 : 1 }}
+                    whileHover={{ y: 0, opacity: 1 }}
+                    transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+                  >
                     <div className="flex items-center gap-4 md:gap-8">
                       <motion.div
                         whileHover={{ scale: 1.5 }}
@@ -1894,18 +2633,33 @@ export default function App() {
                         whileTap={{ scale: 0.9 }}
                         initial={{ scale: 0.9 }}
                       >
-                        <Repeat 
-                          className={cn("w-5 h-5 md:w-6 md:h-6 cursor-pointer transition-all", repeatMode !== 'none' ? "text-primary" : "text-zinc-500 hover:text-white")}
-                          onClick={() => setRepeatMode(prev => prev === 'none' ? 'all' : prev === 'all' ? 'one' : 'none')}
-                        />
+                        {repeatMode === 'one' ? (
+                          <Repeat1 
+                            className="w-5 h-5 md:w-6 md:h-6 cursor-pointer transition-all text-primary"
+                            onClick={() => setRepeatMode('none')}
+                          />
+                        ) : (
+                          <Repeat 
+                            className={cn("w-5 h-5 md:w-6 md:h-6 cursor-pointer transition-all", repeatMode === 'all' ? "text-primary" : "text-zinc-500 hover:text-white")}
+                            onClick={() => setRepeatMode(prev => prev === 'none' ? 'all' : 'one')}
+                          />
+                        )}
                       </motion.div>
                     </div>
-                  </div>
+                  </motion.div>
 
                   {/* Volume & Other Controls */}
-                  <div className="flex items-center justify-between pt-2 md:pt-4 border-t border-white/5">
+                  <motion.div 
+                    className="flex items-center justify-between pt-2 md:pt-4 border-t border-white/5"
+                    initial={{ y: 0 }}
+                    animate={{ y: isPlaying ? 40 : 0, opacity: isPlaying ? 0.2 : 1 }}
+                    whileHover={{ y: 0, opacity: 1 }}
+                    transition={{ type: 'spring', damping: 20, stiffness: 100, delay: 0.1 }}
+                  >
                     <div className="flex items-center gap-3 md:gap-4 w-1/2 md:w-1/3">
-                      <Volume1 className="w-4 h-4 md:w-5 md:h-5 text-zinc-500" />
+                      <button onClick={toggleMute} className="text-zinc-500 hover:text-white transition-colors">
+                        {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 md:w-5 md:h-5" /> : <Volume1 className="w-4 h-4 md:w-5 md:h-5" />}
+                      </button>
                       <div className="flex-1 h-1 bg-zinc-800 rounded-full relative group cursor-pointer">
                         <input 
                           type="range" 
@@ -1916,12 +2670,14 @@ export default function App() {
                           onChange={(e) => setVolume(parseFloat(e.target.value))}
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                         />
-                        <div className="absolute left-0 top-0 h-full bg-white/40 rounded-full" style={{ width: `${volume * 100}%` }} />
-                        <div className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" style={{ left: `${volume * 100}%` }} />
+                        <div className="absolute left-0 top-0 h-full bg-white rounded-full transition-all" style={{ width: `${volume * 100}%` }} />
+                        <div className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg" style={{ left: `${volume * 100}%` }} />
+                        <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-mono text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          {Math.round(volume * 100)}%
+                        </span>
                       </div>
-                      <Volume2 className="w-4 h-4 md:w-5 md:h-5 text-zinc-500" />
                     </div>
-
+                    
                     <div className="flex items-center gap-4 md:gap-8">
                       <motion.div 
                         whileHover={{ scale: 1.5 }} 
@@ -1958,11 +2714,24 @@ export default function App() {
                       >
                         <ListMusic className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
                       </motion.div>
-                      <motion.div whileHover={{ scale: 1.5 }} whileTap={{ scale: 0.9 }} initial={{ scale: 0.9 }}>
+                      <motion.div 
+                        whileHover={{ scale: 1.5 }} 
+                        whileTap={{ scale: 0.9 }} 
+                        initial={{ scale: 0.9 }}
+                        onClick={() => window.open(currentSong.videoUrl, '_blank')}
+                      >
+                        <ExternalLink className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
+                      </motion.div>
+                      <motion.div 
+                        whileHover={{ scale: 1.5 }} 
+                        whileTap={{ scale: 0.9 }} 
+                        initial={{ scale: 0.9 }}
+                        onClick={() => handleMore(currentSong)}
+                      >
                         <MoreHorizontal className="w-4 h-4 md:w-5 md:h-5 text-zinc-500 hover:text-white cursor-pointer transition-colors" />
                       </motion.div>
                     </div>
-                  </div>
+                  </motion.div>
                 </div>
               </div>
             </motion.div>
@@ -1974,462 +2743,535 @@ export default function App() {
       <AnimatePresence>
         {showSettings && (
           <motion.div 
-            initial={{ x: 400 }}
-            animate={{ x: 0 }}
-            exit={{ x: 400 }}
-            className="fixed right-0 top-0 bottom-0 w-full md:w-96 bg-zinc-950 border-l border-tertiary/20 z-[100] shadow-2xl overflow-hidden flex flex-col"
+            initial={{ x: isMobile ? '100%' : 400, width: isMobile ? '100%' : 384 }}
+            animate={{ x: 0, width: isMobile ? '100%' : 384 }}
+            exit={{ x: isMobile ? '100%' : 400, width: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className={cn(
+              "z-[100] bg-zinc-950 border-l border-tertiary/20 shadow-2xl overflow-hidden flex flex-col flex-shrink-0",
+              isMobile ? "fixed inset-0" : "relative h-full"
+            )}
           >
             <div className="p-6 border-b border-white/5 flex items-center justify-between bg-zinc-900/50">
               <div className="flex items-center gap-3">
                 <Settings className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-black tracking-tighter">Settings</h2>
+                <h2 className="text-xl font-black tracking-tighter">{t('settings')}</h2>
               </div>
               <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white">✕</button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar pb-32">
-              {/* Now Playing Customization Category */}
-              <section className="space-y-4">
-                <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
-                  <Disc3 className="w-3 h-3" /> Now Playing Customization
-                </h3>
-                
-                <div className="space-y-6 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-zinc-400">Show Visualizer</label>
-                    <button 
-                      onClick={() => updatePreferences({ theme: { ...theme, visualizerNowPlaying: !theme.visualizerNowPlaying } })}
-                      className={cn(
-                        "w-10 h-5 rounded-full transition-all relative",
-                        theme.visualizerNowPlaying ? "bg-tertiary" : "bg-zinc-800"
-                      )}
-                    >
-                      <div className={cn(
-                        "absolute top-1 w-3 h-3 rounded-full bg-white transition-all",
-                        theme.visualizerNowPlaying ? "left-6" : "left-1"
-                      )} />
-                    </button>
-                  </div>
+            {/* Settings Navigation Tabs */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1 p-2 bg-zinc-900/30 border-b border-white/5">
+              {[
+                { id: 'general', icon: Settings, label: 'General' },
+                { id: 'appearance', icon: Layout, label: 'Appearance' },
+                { id: 'audio', icon: Headphones, label: 'Audio' },
+                { id: 'accessibility', icon: Accessibility, label: 'Accessibility' },
+                { id: 'language', icon: Globe, label: 'Language' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSettingsPage(tab.id as any)}
+                  className={cn(
+                    "flex items-center justify-center gap-2 px-2 py-1.5 rounded-lg text-[9px] font-bold transition-all whitespace-nowrap",
+                    settingsPage === tab.id 
+                      ? "bg-tertiary text-black shadow-lg" 
+                      : "text-zinc-500 hover:text-white hover:bg-white/5"
+                  )}
+                  title={`Switch to ${tab.label} settings`}
+                >
+                  <tab.icon className="w-3 h-3" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-                  {theme.visualizerNowPlaying && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold text-zinc-400">Visualizer Opacity</label>
-                        <span className="text-[10px] font-mono text-tertiary">{Math.round(theme.visualizerNowPlayingOpacity * 100)}%</span>
+            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar pb-32">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={settingsPage}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {settingsPage === 'general' && (
+                    <section className="space-y-6">
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
+                          <ShieldAlert className="w-3 h-3" /> Content Safety
+                        </h3>
+                        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold">{t('explicitContent')}</span>
+                              <span className="text-[9px] text-zinc-500">Allow or restrict NSFW content</span>
+                            </div>
+                            <button 
+                              onClick={() => updatePreferences({ audio: { ...preferences.audio, blockExplicit: !preferences.audio.blockExplicit } })}
+                              className={cn(
+                                "w-10 h-5 rounded-full transition-all relative",
+                                !preferences.audio.blockExplicit ? "bg-red-500" : "bg-zinc-800"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-3 h-3 rounded-full bg-white transition-all",
+                                !preferences.audio.blockExplicit ? "left-6" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+                          {!preferences.audio.blockExplicit && (
+                            <p className="text-[9px] text-red-400/60 italic">Warning: Explicit content is now allowed in search and playlists.</p>
+                          )}
+                        </div>
                       </div>
-                      <input 
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.05"
-                        value={theme.visualizerNowPlayingOpacity}
-                        onChange={(e) => updatePreferences({ theme: { ...theme, visualizerNowPlayingOpacity: parseFloat(e.target.value) } })}
-                        className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-tertiary"
-                      />
-                    </div>
+
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
+                          <Disc3 className="w-3 h-3" /> {t('nowPlaying')}
+                        </h3>
+                        <div className="space-y-6 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-zinc-400">Show Visualizer</label>
+                            <button 
+                              onClick={() => updatePreferences({ theme: { ...theme, visualizerNowPlaying: !theme.visualizerNowPlaying } })}
+                              className={cn(
+                                "w-10 h-5 rounded-full transition-all relative",
+                                theme.visualizerNowPlaying ? "bg-tertiary" : "bg-zinc-800"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-3 h-3 rounded-full bg-white transition-all",
+                                theme.visualizerNowPlaying ? "left-6" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+                          {/* ... other now playing settings ... */}
+                        </div>
+                      </div>
+                    </section>
                   )}
 
-                  <div className="space-y-4 pt-4 border-t border-white/5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-zinc-400">Lyrics Opacity</label>
-                      <span className="text-[10px] font-mono text-tertiary">{Math.round(theme.lyricsOpacity * 100)}%</span>
-                    </div>
-                    <input 
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={theme.lyricsOpacity}
-                      onChange={(e) => updatePreferences({ theme: { ...theme, lyricsOpacity: parseFloat(e.target.value) } })}
-                      className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-tertiary"
-                    />
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-400">Lyrics Font Size</label>
-                      <div className="flex items-center gap-4">
-                        <input 
-                          type="range"
-                          min="12"
-                          max="80"
-                          step="2"
-                          value={theme.lyricsFontSize}
-                          onChange={(e) => updatePreferences({ theme: { ...theme, lyricsFontSize: parseInt(e.target.value) } })}
-                          className="flex-1 h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-tertiary"
-                        />
-                        <span className="text-[10px] font-mono text-tertiary w-8">{theme.lyricsFontSize}px</span>
+                  {settingsPage === 'appearance' && (
+                    <section className="space-y-6">
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
+                          <Activity className="w-3 h-3" /> {t('visualizer')}
+                        </h3>
+                        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-6">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-zinc-400">Visualizer Type</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {['bars', 'wave', 'circle', 'particles', 'spectrum', 'rings', 'glitch', 'nebula', 'fireworks', 'matrix'].map((type) => (
+                                <button
+                                  key={type}
+                                  onClick={() => updatePreferences({ theme: { ...theme, visualizerType: type as any } })}
+                                  className={cn(
+                                    "px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-all border",
+                                    theme.visualizerType === type 
+                                      ? "bg-tertiary text-black border-tertiary shadow-[0_0_15px_rgba(var(--tertiary-color-rgb),0.3)]" 
+                                      : "bg-white/5 text-zinc-400 border-white/5 hover:bg-white/10"
+                                  )}
+                                >
+                                  {t(type)}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-400">Lyrics Font Family</label>
-                      <select 
-                        value={theme.lyricsFontFamily}
-                        onChange={(e) => updatePreferences({ theme: { ...theme, lyricsFontFamily: e.target.value } })}
-                        className="w-full bg-zinc-800 border border-white/10 rounded-xl p-2.5 focus:outline-none text-xs font-medium"
-                      >
-                        <option value="Inter">Inter</option>
-                        <option value="Space Grotesk">Space Grotesk</option>
-                        <option value="Playfair Display">Playfair</option>
-                        <option value="JetBrains Mono">JetBrains Mono</option>
-                        <option value="Anton">Anton</option>
-                        <option value="Syne">Syne</option>
-                      </select>
-                    </div>
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
+                          <Layout className="w-3 h-3" /> {t('appearance')}
+                        </h3>
+                        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-6">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-zinc-400" title="Choose the application's font family">Font Family</label>
+                            <select 
+                              value={theme.fontFamily}
+                              onChange={(e) => updatePreferences({ theme: { ...theme, fontFamily: e.target.value } })}
+                              className="w-full bg-zinc-800 border border-white/10 rounded-xl p-2.5 focus:outline-none text-xs font-medium"
+                            >
+                              {['Inter', 'Space Grotesk', 'Playfair Display', 'JetBrains Mono', 'Outfit', 'Montserrat', 'Syne', 'Anton'].map(font => (
+                                <option key={font} value={font} style={{ fontFamily: font }}>{font}</option>
+                              ))}
+                            </select>
+                          </div>
 
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-400">Lyrics Color</label>
-                      <div className="flex flex-wrap gap-2">
-                        {['#FFFFFF', '#FF007F', '#00FF00', '#00FFFF', '#FFFF00', '#FFA500'].map((c) => (
-                          <button
-                            key={c}
-                            onClick={() => updatePreferences({ theme: { ...theme, lyricsColor: c } })}
-                            className={cn(
-                              "w-6 h-6 rounded-full border-2 transition-all hover:scale-110",
-                              theme.lyricsColor === c ? "border-white scale-110 shadow-lg" : "border-transparent"
-                            )}
-                            style={{ backgroundColor: c }}
-                          />
-                        ))}
-                        <input 
-                          type="color"
-                          value={theme.lyricsColor}
-                          onChange={(e) => updatePreferences({ theme: { ...theme, lyricsColor: e.target.value } })}
-                          className="w-6 h-6 rounded-full bg-transparent border-none cursor-pointer p-0 overflow-hidden"
-                        />
+                          <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-4">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold text-zinc-400" title="Set the primary brand color">Primary Color</label>
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="color" 
+                                  value={theme.primaryColor}
+                                  onChange={(e) => updatePreferences({ theme: { ...theme, primaryColor: e.target.value } })}
+                                  className="w-8 h-8 rounded-lg bg-transparent border-none cursor-pointer"
+                                />
+                                <span className="text-[10px] font-mono text-zinc-500 uppercase">{theme.primaryColor}</span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold text-zinc-400" title="Set the secondary accent color">Secondary Color</label>
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="color" 
+                                  value={theme.secondaryColor}
+                                  onChange={(e) => updatePreferences({ theme: { ...theme, secondaryColor: e.target.value } })}
+                                  className="w-8 h-8 rounded-lg bg-transparent border-none cursor-pointer"
+                                />
+                                <span className="text-[10px] font-mono text-zinc-500 uppercase">{theme.secondaryColor}</span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold text-zinc-400" title="Set the tertiary highlight color">Tertiary Color</label>
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="color" 
+                                  value={theme.tertiaryColor}
+                                  onChange={(e) => updatePreferences({ theme: { ...theme, tertiaryColor: e.target.value } })}
+                                  className="w-8 h-8 rounded-lg bg-transparent border-none cursor-pointer"
+                                />
+                                <span className="text-[10px] font-mono text-zinc-500 uppercase">{theme.tertiaryColor}</span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold text-zinc-400" title="Set the main text color">Text Color</label>
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="color" 
+                                  value={theme.textColor}
+                                  onChange={(e) => updatePreferences({ theme: { ...theme, textColor: e.target.value } })}
+                                  className="w-8 h-8 rounded-lg bg-transparent border-none cursor-pointer"
+                                />
+                                <span className="text-[10px] font-mono text-zinc-500 uppercase">{theme.textColor}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 border-t border-white/5 pt-4">
+                            <label className="text-[10px] font-bold text-zinc-400" title="Set the color for lyrics display">Lyrics Color</label>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="color" 
+                                value={theme.lyricsColor}
+                                onChange={(e) => updatePreferences({ theme: { ...theme, lyricsColor: e.target.value } })}
+                                className="w-8 h-8 rounded-lg bg-transparent border-none cursor-pointer"
+                              />
+                              <span className="text-[10px] font-mono text-zinc-500 uppercase">{theme.lyricsColor}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    </section>
+                  )}
 
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-400">Lyrics Alignment</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {['left', 'center', 'right'].map((align) => (
-                          <button
-                            key={align}
-                            onClick={() => updatePreferences({ theme: { ...theme, lyricsAlignment: align as any } })}
-                            className={cn(
-                              "px-2 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all border",
-                              theme.lyricsAlignment === align 
-                                ? "bg-tertiary text-black border-tertiary" 
-                                : "bg-white/5 text-zinc-400 border-white/5 hover:bg-white/10"
-                            )}
-                          >
-                            {align}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* Visualizer Customization Category */}
-              <section className="space-y-4">
-                <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
-                  <Activity className="w-3 h-3" /> Visualizer Customization
-                </h3>
-                
-                <div className="space-y-6 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400">Visualizer Type</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {['bars', 'wave', 'circle', 'particles', 'spectrum', 'rings', 'glitch', 'nebula', 'fireworks', 'matrix'].map((type) => (
-                        <button
-                          key={type}
-                          onClick={() => updatePreferences({ theme: { ...theme, visualizerType: type as any } })}
-                          className={cn(
-                            "px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-all border",
-                            theme.visualizerType === type 
-                              ? "bg-tertiary text-black border-tertiary shadow-[0_0_15px_rgba(var(--tertiary-color-rgb),0.3)]" 
-                              : "bg-white/5 text-zinc-400 border-white/5 hover:bg-white/10"
-                          )}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-zinc-400">Opacity</label>
-                      <span className="text-[10px] font-mono text-tertiary">{Math.round(theme.visualizerOpacity * 100)}%</span>
-                    </div>
-                    <input 
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={theme.visualizerOpacity}
-                      onChange={(e) => updatePreferences({ theme: { ...theme, visualizerOpacity: parseFloat(e.target.value) } })}
-                      className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-tertiary"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400">Primary Color</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#FFFFFF'].map((c) => (
-                        <button
-                          key={c}
-                          onClick={() => updatePreferences({ theme: { ...theme, visualizerColor: c } })}
-                          className={cn(
-                            "w-6 h-6 rounded-full border-2 transition-all hover:scale-110",
-                            theme.visualizerColor === c ? "border-white scale-110 shadow-lg" : "border-transparent"
-                          )}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                      <input 
-                        type="color"
-                        value={theme.visualizerColor || '#FFFFFF'}
-                        onChange={(e) => updatePreferences({ theme: { ...theme, visualizerColor: e.target.value } })}
-                        className="w-6 h-6 rounded-full bg-transparent border-none cursor-pointer p-0 overflow-hidden"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* Appearance Category */}
-              <section className="space-y-4">
-                <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
-                  <Layout className="w-3 h-3" /> Appearance
-                </h3>
-                
-                <div className="space-y-6 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400">Font Family</label>
-                    <select 
-                      value={theme.fontFamily}
-                      onChange={(e) => updatePreferences({ theme: { ...theme, fontFamily: e.target.value } })}
-                      className="w-full bg-zinc-800 border border-white/10 rounded-xl p-2.5 focus:outline-none text-xs font-medium"
-                    >
-                      <option value="Inter">Inter (Modern)</option>
-                      <option value="Space Grotesk">Space Grotesk (Tech)</option>
-                      <option value="Playfair Display">Playfair (Elegant)</option>
-                      <option value="JetBrains Mono">JetBrains (Mono)</option>
-                      <option value="Outfit">Outfit (Clean)</option>
-                      <option value="Montserrat">Montserrat (Bold)</option>
-                      <option value="Roboto Mono">Roboto Mono (Utility)</option>
-                      <option value="Libre Baskerville">Libre Baskerville (Classic)</option>
-                      <option value="Bebas Neue">Bebas Neue (Impact)</option>
-                      <option value="Quicksand">Quicksand (Soft)</option>
-                      <option value="Crimson Pro">Crimson Pro (Serif)</option>
-                      <option value="Syne">Syne (Artistic)</option>
-                      <option value="Anton">Anton (Bold)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-zinc-400">Font Size</label>
-                      <span className="text-[10px] font-mono text-tertiary">{theme.fontSize}px</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="12" 
-                      max="20" 
-                      step="1" 
-                      value={theme.fontSize}
-                      onChange={(e) => updatePreferences({ theme: { ...theme, fontSize: parseInt(e.target.value) } })}
-                      className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-tertiary"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-xs font-bold">Dynamic Theme</span>
-                      <span className="text-[9px] text-zinc-500">Colors adapt to current song</span>
-                    </div>
-                    <button 
-                      onClick={() => updatePreferences({ theme: { ...theme, dynamicTheme: !theme.dynamicTheme } })}
-                      className={cn("w-8 h-4 rounded-full transition-colors relative", theme.dynamicTheme ? "bg-tertiary" : "bg-zinc-700")}
-                    >
-                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", theme.dynamicTheme ? "left-4.5" : "left-0.5")} />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-400">Primary Color</label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {['#ff007f', '#00ffcc', '#7f00ff', '#ffcc00'].map(c => (
-                          <button 
-                            key={c}
-                            onClick={() => updatePreferences({ theme: { ...theme, primaryColor: c } })}
-                            className={cn("w-6 h-6 rounded-full border-2 transition-transform hover:scale-110", theme.primaryColor === c ? "border-white" : "border-transparent")}
-                            style={{ backgroundColor: c }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-400">Text Color</label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {['#ffffff', '#cccccc', '#ff007f', '#00ffcc'].map(c => (
-                          <button 
-                            key={c}
-                            onClick={() => updatePreferences({ theme: { ...theme, textColor: c } })}
-                            className={cn("w-6 h-6 rounded-full border-2 transition-transform hover:scale-110", theme.textColor === c ? "border-white" : "border-transparent")}
-                            style={{ backgroundColor: c }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* Audio Category */}
-              <section className="space-y-4">
-                <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
-                  <Headphones className="w-3 h-3" /> Audio & Playback
-                </h3>
-                
-                <div className="space-y-6 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold">Autoplay</span>
-                        <span className="text-[9px] text-zinc-500">Play similar songs automatically</span>
-                      </div>
-                      <button 
-                        onClick={() => updatePreferences({ audio: { ...preferences.audio, autoplay: !preferences.audio.autoplay } })}
-                        className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.audio.autoplay ? "bg-tertiary" : "bg-zinc-700")}
-                      >
-                        <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.audio.autoplay ? "left-4.5" : "left-0.5")} />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold">Gapless Playback</span>
-                        <span className="text-[9px] text-zinc-500">Seamless transitions between songs</span>
-                      </div>
-                      <button 
-                        onClick={() => updatePreferences({ audio: { ...preferences.audio, gaplessPlayback: !preferences.audio.gaplessPlayback } })}
-                        className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.audio.gaplessPlayback ? "bg-tertiary" : "bg-zinc-700")}
-                      >
-                        <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.audio.gaplessPlayback ? "left-4.5" : "left-0.5")} />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold">Double-tap to seek</span>
-                        <span className="text-[9px] text-zinc-500">Seconds to skip forward/back</span>
-                      </div>
-                      <select 
-                        value={preferences.audio.seekTime}
-                        onChange={(e) => updatePreferences({ audio: { ...preferences.audio, seekTime: parseInt(e.target.value) } })}
-                        className="bg-zinc-800 border border-white/5 rounded-lg px-2 py-1 text-[10px] focus:outline-none"
-                      >
-                        {[5, 10, 15, 30, 60].map(s => (
-                          <option key={s} value={s}>{s}s</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold">Spatial Audio</span>
-                        <span className="text-[9px] text-zinc-500">Immersive 3D soundstage</span>
-                      </div>
-                      <button 
-                        onClick={() => updatePreferences({ audio: { ...preferences.audio, spatialAudio: !preferences.audio.spatialAudio } })}
-                        className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.audio.spatialAudio ? "bg-tertiary" : "bg-zinc-700")}
-                      >
-                        <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.audio.spatialAudio ? "left-4.5" : "left-0.5")} />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold">Dolby Atmos</span>
-                        <span className="text-[9px] text-zinc-500">Enhanced object-based audio</span>
-                      </div>
-                      <button 
-                        onClick={() => updatePreferences({ audio: { ...preferences.audio, dolbyAtmos: !preferences.audio.dolbyAtmos } })}
-                        className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.audio.dolbyAtmos ? "bg-tertiary" : "bg-zinc-700")}
-                      >
-                        <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.audio.dolbyAtmos ? "left-4.5" : "left-0.5")} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 border-t border-white/5 pt-4">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-zinc-400">EQ Preset</label>
-                      <select 
-                        value={preferences.audio.eqPreset}
-                        onChange={(e) => updatePreferences({ audio: { ...preferences.audio, eqPreset: e.target.value } })}
-                        className="bg-zinc-800 border border-white/5 rounded-lg px-2 py-1 text-[10px] focus:outline-none"
-                      >
-                        {['Flat', 'Bass Boost', 'Electronic', 'Rock', 'Pop', 'Classical', 'Custom'].map(p => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div className="flex justify-between items-end h-24 gap-1 px-1">
-                      {preferences.audio.customEq.map((val, i) => (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                          <div className="flex-1 w-1 bg-zinc-700 rounded-full relative">
-                            <div 
-                              className="absolute bottom-0 w-full bg-primary rounded-full transition-all" 
-                              style={{ height: `${(val + 12) / 24 * 100}%` }} 
-                            />
+                  {settingsPage === 'audio' && (
+                    <section className="space-y-6">
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
+                          <Headphones className="w-3 h-3" /> {t('audio')}
+                        </h3>
+                        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-6">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-bold text-zinc-400">Master Volume</label>
+                              <span className="text-[10px] font-mono text-tertiary">{Math.round(volume * 100)}%</span>
+                            </div>
                             <input 
-                              type="range" 
-                              min="-12" 
-                              max="12" 
-                              step="1" 
-                              value={val}
-                              onChange={(e) => {
-                                const newEq = [...preferences.audio.customEq];
-                                newEq[i] = parseInt(e.target.value);
-                                updatePreferences({ audio: { ...preferences.audio, customEq: newEq, eqPreset: 'Custom' } });
-                              }}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer -rotate-90 origin-center"
-                              style={{ width: '96px', left: '-47px', top: '47px' }}
+                              type="range" min="0" max="1" step="0.01" value={volume}
+                              onChange={(e) => setVolume(parseFloat(e.target.value))}
+                              className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-tertiary"
                             />
                           </div>
-                          <span className="text-[6px] font-mono text-zinc-500">{['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'][i]}</span>
+
+                          <div className="space-y-4 border-t border-white/5 pt-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold">Autoplay</span>
+                                <span className="text-[9px] text-zinc-500">Play similar songs automatically</span>
+                              </div>
+                              <button 
+                                onClick={() => updatePreferences({ audio: { ...preferences.audio, autoplay: !preferences.audio.autoplay } })}
+                                className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.audio.autoplay ? "bg-tertiary" : "bg-zinc-700")}
+                              >
+                                <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.audio.autoplay ? "left-4.5" : "left-0.5")} />
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold">Gapless Playback</span>
+                                <span className="text-[9px] text-zinc-500">Seamless transitions between songs</span>
+                              </div>
+                              <button 
+                                onClick={() => updatePreferences({ audio: { ...preferences.audio, gaplessPlayback: !preferences.audio.gaplessPlayback } })}
+                                className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.audio.gaplessPlayback ? "bg-tertiary" : "bg-zinc-700")}
+                              >
+                                <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.audio.gaplessPlayback ? "left-4.5" : "left-0.5")} />
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold">Spatial Audio</span>
+                                <span className="text-[9px] text-zinc-500">Immersive 3D soundstage</span>
+                              </div>
+                              <button 
+                                onClick={() => updatePreferences({ audio: { ...preferences.audio, spatialAudio: !preferences.audio.spatialAudio } })}
+                                className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.audio.spatialAudio ? "bg-tertiary" : "bg-zinc-700")}
+                              >
+                                <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.audio.spatialAudio ? "left-4.5" : "left-0.5")} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4 border-t border-white/5 pt-4">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-bold text-zinc-400" title="Select a pre-defined equalizer setting">EQ Preset</label>
+                              <select 
+                                value={preferences.audio.eqPreset}
+                                onChange={(e) => {
+                                  const preset = e.target.value;
+                                  if (preset === 'Custom') {
+                                    updatePreferences({ audio: { ...preferences.audio, eqPreset: preset } });
+                                  } else if (preset.startsWith('profile-')) {
+                                    const profileId = preset.replace('profile-', '');
+                                    const profile = preferences.audio.customEqProfiles.find(p => p.id === profileId);
+                                    if (profile) {
+                                      updatePreferences({ audio: { ...preferences.audio, eqPreset: preset, customEq: profile.values } });
+                                    }
+                                  } else {
+                                    updatePreferences({ audio: { ...preferences.audio, eqPreset: preset, customEq: EQ_PRESETS[preset] } });
+                                  }
+                                }}
+                                className="bg-zinc-800 border border-white/5 rounded-lg px-2 py-1 text-[10px] focus:outline-none"
+                              >
+                                {Object.keys(EQ_PRESETS).map(p => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                                {preferences.audio.customEqProfiles.map(p => (
+                                  <option key={p.id} value={`profile-${p.id}`}>{p.name}</option>
+                                ))}
+                                <option value="Custom">Custom</option>
+                              </select>
+                            </div>
+                            
+                            <div className="flex justify-between items-end h-24 gap-1 px-1">
+                              {preferences.audio.customEq.map((val, i) => (
+                                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                                  <div className="flex-1 w-1 bg-zinc-700 rounded-full relative">
+                                    <div 
+                                      className="absolute bottom-0 w-full bg-primary rounded-full transition-all" 
+                                      style={{ height: `${(val + 12) / 24 * 100}%` }} 
+                                    />
+                                    <input 
+                                      type="range" 
+                                      min="-12" 
+                                      max="12" 
+                                      step="1" 
+                                      value={val}
+                                      title={`${FREQUENCIES[i]}Hz: ${val}dB`}
+                                      onChange={(e) => {
+                                        const newEq = [...preferences.audio.customEq];
+                                        newEq[i] = parseInt(e.target.value);
+                                        updatePreferences({ audio: { ...preferences.audio, customEq: newEq, eqPreset: 'Custom' } });
+                                      }}
+                                      className="absolute inset-0 w-full h-full opacity-0 z-10 -rotate-90 origin-center cursor-pointer"
+                                      style={{ width: '96px', left: '-47px', top: '47px' }}
+                                    />
+                                  </div>
+                                  <span className="text-[6px] font-mono text-zinc-500">{FREQUENCIES[i] >= 1000 ? `${FREQUENCIES[i]/1000}k` : FREQUENCIES[i]}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-2">
+                              <input 
+                                type="text"
+                                placeholder="Profile Name"
+                                value={newEqName}
+                                onChange={(e) => setNewEqName(e.target.value)}
+                                className="flex-1 bg-zinc-800 border border-white/5 rounded-lg px-3 py-1.5 text-[10px] focus:outline-none focus:border-tertiary/50 transition-all"
+                                title="Enter a name for your custom EQ profile"
+                              />
+                              <button 
+                                onClick={() => {
+                                  if (!newEqName.trim()) return;
+                                  const newProfile = {
+                                    id: Date.now().toString(),
+                                    name: newEqName.trim(),
+                                    values: [...preferences.audio.customEq]
+                                  };
+                                  updatePreferences({ 
+                                    audio: { 
+                                      ...preferences.audio, 
+                                      customEqProfiles: [...preferences.audio.customEqProfiles, newProfile],
+                                      eqPreset: `profile-${newProfile.id}`
+                                    } 
+                                  });
+                                  setNewEqName('');
+                                  toast.success('EQ Profile Saved');
+                                }}
+                                className="px-3 py-1.5 bg-tertiary text-black rounded-lg text-[10px] font-bold hover:scale-105 active:scale-95 transition-all"
+                                title="Save current EQ settings as a new profile"
+                              >
+                                Save
+                              </button>
+                            </div>
+
+                            {preferences.audio.customEqProfiles.length > 0 && (
+                              <div className="space-y-2 pt-2">
+                                <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Saved Profiles</label>
+                                <div className="space-y-1">
+                                  {preferences.audio.customEqProfiles.map(profile => (
+                                    <div key={profile.id} className="flex items-center justify-between bg-white/5 p-2 rounded-lg group">
+                                      <span className="text-[10px] font-medium">{profile.name}</span>
+                                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                          onClick={() => {
+                                            const newName = prompt('Rename profile:', profile.name);
+                                            if (newName && newName.trim()) {
+                                              const newProfiles = preferences.audio.customEqProfiles.map(p => 
+                                                p.id === profile.id ? { ...p, name: newName.trim() } : p
+                                              );
+                                              updatePreferences({ audio: { ...preferences.audio, customEqProfiles: newProfiles } });
+                                            }
+                                          }}
+                                          className="p-1 hover:text-tertiary transition-colors"
+                                          title="Rename this profile"
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                        </button>
+                                        <button 
+                                          onClick={() => {
+                                            const newProfiles = preferences.audio.customEqProfiles.filter(p => p.id !== profile.id);
+                                            updatePreferences({ 
+                                              audio: { 
+                                                ...preferences.audio, 
+                                                customEqProfiles: newProfiles,
+                                                eqPreset: preferences.audio.eqPreset === `profile-${profile.id}` ? 'Flat' : preferences.audio.eqPreset
+                                              } 
+                                            });
+                                            toast.error('Profile Deleted');
+                                          }}
+                                          className="p-1 hover:text-red-500 transition-colors"
+                                          title="Delete this profile"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
+                      </div>
+                    </section>
+                  )}
 
-              {/* Advanced Category */}
-              <section className="space-y-4">
-                <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
-                  <Zap className="w-3 h-3" /> Advanced Features
-                </h3>
-                <div className="space-y-4 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold">Lossless Audio</span>
-                    <button 
-                      onClick={() => updatePreferences({ appSettings: { ...preferences.appSettings, losslessAudio: !preferences.appSettings.losslessAudio } })}
-                      className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.appSettings.losslessAudio ? "bg-primary" : "bg-zinc-700")}
-                    >
-                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.appSettings.losslessAudio ? "left-4.5" : "left-0.5")} />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold">Volume Normalization</span>
-                    <button 
-                      onClick={() => updatePreferences({ appSettings: { ...preferences.appSettings, volumeNormalization: !preferences.appSettings.volumeNormalization } })}
-                      className={cn("w-8 h-4 rounded-full transition-colors relative", preferences.appSettings.volumeNormalization ? "bg-primary" : "bg-zinc-700")}
-                    >
-                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all", preferences.appSettings.volumeNormalization ? "left-4.5" : "left-0.5")} />
-                    </button>
-                  </div>
-                </div>
-              </section>
+                  {settingsPage === 'accessibility' && (
+                    <section className="space-y-6">
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
+                          <Accessibility className="w-3 h-3" /> {t('accessibility')}
+                        </h3>
+                        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-6">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-zinc-400">{t('colorBlind')}</label>
+                            <select 
+                              value={preferences.accessibility.colorBlindMode}
+                              onChange={(e) => updatePreferences({ accessibility: { ...preferences.accessibility, colorBlindMode: e.target.value as any } })}
+                              className="w-full bg-zinc-800 border border-white/10 rounded-xl p-2.5 focus:outline-none text-xs font-medium"
+                            >
+                              {['none', 'protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia'].map(mode => (
+                                <option key={mode} value={mode}>{t(mode)}</option>
+                              ))}
+                            </select>
+                          </div>
 
-              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 text-center space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold">{t('screenReader')}</span>
+                              <span className="text-[9px] text-zinc-500">Enable text-to-speech feedback</span>
+                            </div>
+                            <button 
+                              onClick={() => updatePreferences({ accessibility: { ...preferences.accessibility, screenReader: !preferences.accessibility.screenReader } })}
+                              className={cn(
+                                "w-10 h-5 rounded-full transition-all relative",
+                                preferences.accessibility.screenReader ? "bg-tertiary" : "bg-zinc-800"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-3 h-3 rounded-full bg-white transition-all",
+                                preferences.accessibility.screenReader ? "left-6" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold">{t('highContrast')}</span>
+                              <span className="text-[9px] text-zinc-500">Increase UI contrast</span>
+                            </div>
+                            <button 
+                              onClick={() => updatePreferences({ accessibility: { ...preferences.accessibility, highContrast: !preferences.accessibility.highContrast } })}
+                              className={cn(
+                                "w-10 h-5 rounded-full transition-all relative",
+                                preferences.accessibility.highContrast ? "bg-tertiary" : "bg-zinc-800"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-3 h-3 rounded-full bg-white transition-all",
+                                preferences.accessibility.highContrast ? "left-6" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-bold text-zinc-400">{t('hearingCalibration')}</label>
+                              <span className="text-[10px] font-mono text-tertiary">{Math.round(preferences.accessibility.hearingCalibration * 100)}%</span>
+                            </div>
+                            <input 
+                              type="range" min="0.5" max="1.5" step="0.05" value={preferences.accessibility.hearingCalibration}
+                              onChange={(e) => updatePreferences({ accessibility: { ...preferences.accessibility, hearingCalibration: parseFloat(e.target.value) } })}
+                              className="w-full h-1 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-tertiary"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  )}
+
+                  {settingsPage === 'language' && (
+                    <section className="space-y-6">
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold flex items-center gap-2">
+                          <Globe className="w-3 h-3" /> {t('language')}
+                        </h3>
+                        <div className="bg-zinc-900/50 p-4 rounded-2xl border border-white/5 space-y-4">
+                          <label className="text-[10px] font-bold text-zinc-400">Select Language</label>
+                          <select 
+                            value={preferences.language}
+                            onChange={(e) => updatePreferences({ language: e.target.value })}
+                            className="w-full bg-zinc-800 border border-white/10 rounded-xl p-2.5 focus:outline-none text-xs font-medium"
+                          >
+                            {Object.keys(translations).map(lang => (
+                              <option key={lang} value={lang}>{lang}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </section>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+
+              <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 text-center space-y-3 mt-6">
                 <button 
                   onClick={() => {
                     updatePreferences(DEFAULT_PREFERENCES);
@@ -2447,6 +3289,89 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Station Modal (Planning Window) */}
+      <AnimatePresence>
+        {isStationModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-2xl bg-zinc-900 border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+            >
+              <div className="p-6 border-b border-white/5 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-black tracking-tighter">{t('createStation')}</h2>
+                  <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-bold">{t('pickArtists')}</p>
+                </div>
+                <button 
+                  onClick={() => setIsStationModalOpen(false)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {Array.from(new Set(MOCK_SONGS.map(s => s.artist))).map(artist => (
+                    <button 
+                      key={artist}
+                      onClick={() => {
+                        if (stationArtists.includes(artist)) {
+                          setStationArtists(stationArtists.filter(a => a !== artist));
+                        } else {
+                          setStationArtists([...stationArtists, artist]);
+                        }
+                      }}
+                      className={cn(
+                        "flex flex-col items-center gap-3 p-4 rounded-2xl transition-all border",
+                        stationArtists.includes(artist) ? "bg-tertiary/20 border-tertiary" : "bg-white/5 border-transparent hover:border-white/10"
+                      )}
+                    >
+                      <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center overflow-hidden border-2 border-white/5">
+                        <img src={`https://picsum.photos/seed/${artist}/100/100`} alt={artist} className="w-full h-full object-cover" />
+                      </div>
+                      <span className="text-xs font-bold text-center">{artist}</span>
+                      {stationArtists.includes(artist) && <Check className="w-4 h-4 text-tertiary" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-white/5 bg-black/20">
+                <button 
+                  disabled={stationArtists.length === 0}
+                  onClick={() => {
+                    const filteredSongs = MOCK_SONGS.filter(s => stationArtists.includes(s.artist));
+                    if (filteredSongs.length > 0) {
+                      setQueue(filteredSongs);
+                      setCurrentSong(filteredSongs[0]);
+                      setIsPlaying(true);
+                      setIsStationModalOpen(false);
+                      toast.success('Station created!', {
+                        description: `Playing a mix of ${stationArtists.join(', ')}`
+                      });
+                    }
+                  }}
+                  className={cn(
+                    "w-full py-4 rounded-2xl font-black uppercase tracking-widest transition-all shadow-xl",
+                    stationArtists.length > 0 ? "pink-gradient-bg text-white" : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                  )}
+                >
+                  {t('startMix')}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

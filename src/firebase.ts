@@ -8,6 +8,12 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
 
+export interface CustomEqProfile {
+  id: string;
+  name: string;
+  values: number[];
+}
+
 export interface UserPreferences {
   theme: {
     primaryColor: string;
@@ -34,12 +40,17 @@ export interface UserPreferences {
   audio: {
     eqPreset: string;
     customEq: number[];
+    customEqProfiles: CustomEqProfile[];
     spatialAudio: boolean;
     dolbyAtmos: boolean;
     gaplessPlayback: boolean;
     blockExplicit: boolean;
     autoplay: boolean;
     seekTime: number;
+    playbackMode: 'song' | 'video';
+    doubleTapToSeek: boolean;
+    volumeNormalization: boolean;
+    losslessAudio: boolean;
   };
   appSettings: {
     losslessAudio: boolean;
@@ -51,6 +62,14 @@ export interface UserPreferences {
   };
   blockedSongs: string[];
   likedSongs: string[];
+  playlists: any[]; // Using any[] here to avoid circular dependency if Playlist is complex, but we'll use Playlist[] in App.tsx
+  accessibility: {
+    colorBlindMode: 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia' | 'achromatopsia';
+    screenReader: boolean;
+    hearingCalibration: number;
+    highContrast: boolean;
+  };
+  language: string;
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -79,12 +98,17 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   audio: {
     eqPreset: 'Flat',
     customEq: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    customEqProfiles: [],
     spatialAudio: false,
     dolbyAtmos: false,
     gaplessPlayback: true,
     blockExplicit: false,
     autoplay: true,
-    seekTime: 10
+    seekTime: 10,
+    playbackMode: 'video',
+    doubleTapToSeek: true,
+    volumeNormalization: true,
+    losslessAudio: true
   },
   appSettings: {
     losslessAudio: true,
@@ -95,7 +119,15 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
     seekTime: 10
   },
   blockedSongs: [],
-  likedSongs: []
+  likedSongs: [],
+  playlists: [],
+  accessibility: {
+    colorBlindMode: 'none',
+    screenReader: false,
+    hearingCalibration: 1,
+    highContrast: false
+  },
+  language: 'English'
 };
 
 export const saveUserPreferences = async (userId: string, prefs: UserPreferences) => {
