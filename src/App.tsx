@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import ReactPlayer from 'react-player';
 import { Toaster, toast } from 'sonner';
 import { 
@@ -352,6 +353,11 @@ export default function App() {
   const [settingsPage, setSettingsPage] = useState<'general' | 'appearance' | 'audio' | 'accessibility' | 'language'>('general');
   const [isStationModalOpen, setIsStationModalOpen] = useState(false);
   const [stationArtists, setStationArtists] = useState<string[]>([]);
+
+  const miniPlayerRef = useRef<HTMLDivElement>(null);
+  const fullPlayerRef = useRef<HTMLDivElement>(null);
+  const [playerPortalTarget, setPlayerPortalTarget] = useState<HTMLElement | null>(null);
+
   const [newEqName, setNewEqName] = useState('');
   const [isSavingEq, setIsSavingEq] = useState(false);
   const [isCastOpen, setIsCastOpen] = useState(false);
@@ -395,6 +401,22 @@ export default function App() {
     }
     return DEFAULT_PREFERENCES;
   });
+
+  // Sync player portal target
+  useEffect(() => {
+    const updateTarget = () => {
+      const target = (isNowPlayingOpen && preferences.audio.playbackMode === 'video') 
+        ? fullPlayerRef.current 
+        : miniPlayerRef.current;
+      if (target) setPlayerPortalTarget(target);
+    };
+    
+    updateTarget();
+    // Small delay to ensure refs are updated after render cycles
+    const timer = setTimeout(updateTarget, 0);
+    return () => clearTimeout(timer);
+  }, [isNowPlayingOpen, preferences.audio.playbackMode]);
+
   const [theme, setTheme] = useState<ThemeConfig>(preferences.theme);
   const [queue, setQueue] = useState<Song[]>(MOCK_SONGS);
   const [shuffledQueue, setShuffledQueue] = useState<Song[]>([]);
@@ -1951,59 +1973,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="absolute inset-0 z-10">
-            <ReactPlayer 
-              {...({
-                ref: playerRef,
-                url: currentSong.videoUrl,
-                playing: isReady && isPlaying,
-                volume: volume,
-                onEnded: handleEnded,
-                onProgress: handleProgress,
-                onError: (e: any) => console.error('ReactPlayer Error:', e),
-                onReady: (player: any) => {
-                  setIsReady(true);
-                  if (playerRef.current && typeof (playerRef.current as any).getDuration === 'function') {
-                    const d = (playerRef.current as any).getDuration();
-                    if (d) setDuration(d);
-                  }
-                  
-                  // Setup Audio Nodes for EQ
-                  const internal = player.getInternalPlayer();
-                  if (internal instanceof HTMLMediaElement) {
-                    setupAudioNodes(internal);
-                  }
-                  console.log('Player Ready');
-                },
-                onPlay: () => {
-                  if (playerRef.current && typeof (playerRef.current as any).getDuration === 'function') {
-                    const d = (playerRef.current as any).getDuration();
-                    if (d) setDuration(d);
-                  }
-                  console.log('Player Playing');
-                },
-                progressInterval: 100,
-                config: {
-                  youtube: {
-                    origin: typeof window !== 'undefined' ? window.location.origin : '',
-                    playerVars: {
-                      autoplay: 1,
-                      controls: 0,
-                      modestbranding: 1,
-                      rel: 0,
-                      showinfo: 0,
-                      fs: 0,
-                      iv_load_policy: 3,
-                      disablekb: 1
-                    }
-                  }
-                },
-                width: "100%",
-                height: "100%",
-                style: { position: 'absolute', top: 0, left: 0 }
-              } as any)}
-            />
-          </div>
+          <div ref={miniPlayerRef} className="absolute inset-0 z-10" />
           <div className="absolute inset-0 z-20 pointer-events-none">
             <Visualizer 
               opacity={theme.visualizerOpacity} 
@@ -2400,25 +2370,7 @@ export default function App() {
                   </div>
 
                   {preferences.audio.playbackMode === 'video' ? (
-                    <div className="absolute inset-0 w-full h-full rounded-3xl overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.8)] border border-white/10">
-                      <ReactPlayer 
-                        {...({
-                          url: currentSong.videoUrl,
-                          playing: isPlaying,
-                          volume: volume,
-                          muted: false,
-                          width: "100%",
-                          height: "100%",
-                          onReady: (player: any) => {
-                            const internal = player.getInternalPlayer();
-                            if (internal instanceof HTMLMediaElement) {
-                              setupAudioNodes(internal);
-                            }
-                          },
-                          style: { position: 'absolute', top: 0, left: 0 }
-                        } as any)}
-                      />
-                    </div>
+                    <div ref={fullPlayerRef} className="absolute inset-0 w-full h-full rounded-3xl overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.8)] border border-white/10" />
                   ) : (
                     <motion.img 
                       layoutId="album-art"
@@ -3375,6 +3327,62 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Portaled Player - Single instance to avoid playback interruptions and resource conflicts */}
+      {playerPortalTarget && createPortal(
+        <ReactPlayer 
+          {...({
+            ref: playerRef,
+            url: currentSong.videoUrl,
+            playing: isReady && isPlaying,
+            volume: volume,
+            onEnded: handleEnded,
+            onProgress: handleProgress,
+            onError: (e: any) => console.error('ReactPlayer Error:', e),
+            onReady: (player: any) => {
+              setIsReady(true);
+              if (playerRef.current && typeof (playerRef.current as any).getDuration === 'function') {
+                const d = (playerRef.current as any).getDuration();
+                if (d) setDuration(d);
+              }
+              
+              // Setup Audio Nodes for EQ
+              const internal = player.getInternalPlayer();
+              if (internal instanceof HTMLMediaElement) {
+                setupAudioNodes(internal);
+              }
+              console.log('Player Ready');
+            },
+            onPlay: () => {
+              if (playerRef.current && typeof (playerRef.current as any).getDuration === 'function') {
+                const d = (playerRef.current as any).getDuration();
+                if (d) setDuration(d);
+              }
+              console.log('Player Playing');
+            },
+            progressInterval: 100,
+            config: {
+              youtube: {
+                origin: typeof window !== 'undefined' ? window.location.origin : '',
+                playerVars: {
+                  autoplay: 1,
+                  controls: 0,
+                  modestbranding: 1,
+                  rel: 0,
+                  showinfo: 0,
+                  fs: 0,
+                  iv_load_policy: 3,
+                  disablekb: 1
+                }
+              }
+            },
+            width: "100%",
+            height: "100%",
+            style: { position: 'absolute', top: 0, left: 0 }
+          } as any)}
+        />,
+        playerPortalTarget
+      )}
     </div>
   );
 }
